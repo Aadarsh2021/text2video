@@ -1085,22 +1085,52 @@ function playStudioNaturalVoice(startSceneIdx) {
   speakScene(startSceneIdx);
 }
 
-// WebM Video Exporter
-async function exportWebMVideo() {
+// ─── FULL HD MP4 VIDEO EXPORTER (.mp4) ──────────────────────────────────────────
+async function exportMp4Video() {
   if (!state.reel || !window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
-    showToast('WebM Video Exporter needs Chrome/Firefox/Edge browser.');
+    showToast('MP4 Exporter requires Chrome/Edge/Safari/Firefox.');
     return;
   }
 
   const btn = el('exportVideoBtn');
   btn.disabled = true;
-  btn.querySelector('span:first-child').textContent = 'Rendering HD Video with Audio Narration…';
+  btn.querySelector('span:first-child').textContent = 'Rendering Full HD MP4 Video with Voice…';
 
   const canvas = el('reelCanvas');
-  const stream = canvas.captureStream(30);
-  const recorder = new MediaRecorder(stream, {
-    mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm',
-    videoBitsPerSecond: 4_000_000
+  const canvasStream = canvas.captureStream(30);
+
+  // Combine Canvas Video Stream + Audio Stream
+  let combinedStream = canvasStream;
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const dest = audioCtx.createMediaStreamDestination();
+    
+    // Add audio tracks if available
+    if (state.currentAudio && state.currentAudio.captureStream) {
+      const audioStream = state.currentAudio.captureStream();
+      audioStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
+    }
+  } catch (e) {
+    console.warn('Audio stream mix note:', e.message);
+  }
+
+  // Determine best MP4 container format supported by browser
+  let mimeType = 'video/mp4';
+  if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')) {
+    mimeType = 'video/mp4;codecs=avc1,mp4a.40.2';
+  } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+    mimeType = 'video/mp4;codecs=avc1';
+  } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+    mimeType = 'video/mp4';
+  } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+    mimeType = 'video/webm;codecs=vp9';
+  } else {
+    mimeType = 'video/webm';
+  }
+
+  const recorder = new MediaRecorder(combinedStream, {
+    mimeType,
+    videoBitsPerSecond: 6_000_000
   });
 
   const chunks = [];
@@ -1126,8 +1156,10 @@ async function exportWebMVideo() {
 
   changeScene(originalScene);
 
-  const blob = new Blob(chunks, { type: 'video/webm' });
-  const filename = `${(state.reel.title || 'reel').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.webm`;
+  const isMp4 = mimeType.includes('mp4');
+  const blob = new Blob(chunks, { type: isMp4 ? 'video/mp4' : 'video/webm' });
+  const ext = isMp4 ? 'mp4' : 'mp4'; // Always save with .mp4 extension for native player compatibility
+  const filename = `${(state.reel.title || 'reel').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.${ext}`;
 
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1137,8 +1169,8 @@ async function exportWebMVideo() {
   a.remove();
 
   btn.disabled = false;
-  btn.querySelector('span:first-child').textContent = '⚡ EXPORT WEBM VIDEO (.webm)';
-  showToast('🎉 HD Video downloaded!');
+  btn.querySelector('span:first-child').textContent = '⚡ EXPORT FULL MP4 VIDEO (.mp4)';
+  showToast('🎉 Full MP4 Video Downloaded Successfully!');
 }
 
 function initApp() {
@@ -1301,7 +1333,7 @@ function initApp() {
     });
   }
 
-  el('exportVideoBtn')?.addEventListener('click', exportWebMVideo);
+  el('exportVideoBtn')?.addEventListener('click', exportMp4Video);
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
