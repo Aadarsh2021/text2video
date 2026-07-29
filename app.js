@@ -835,8 +835,33 @@ function stopAllAudio() {
   state.speaking = false;
 }
 
+function convertHinglishToHindiDevanagari(text) {
+  if (!text) return '';
+  if (/[\u0900-\u097F]/.test(text)) return text; // Already Devanagari script
+
+  const wordMap = {
+    'main': 'मैं', 'aaj': 'आज', 'ek': 'एक', 'naye': 'नए', 'safar': 'सफर', 'par': 'पर', 'nikla': 'निकला', 'hoon': 'हूँ',
+    'hai': 'है', 'hain': 'हैं', 'yeh': 'यह', 'woh': 'वह', 'kya': 'क्या', 'aapko': 'आपको', 'pata': 'पता', 'bhi': 'भी',
+    'nahi': 'नहीं', 'nahin': 'नहीं', 'aur': 'और', 'se': 'से', 'ko': 'को', 'ka': 'का', 'ki': 'की', 'ke': 'के',
+    'baarish': 'बारिश', 'boondon': 'बूंदों', 'beech': 'बीच', 'shehar': 'शहर', 'sabse': 'सबसे', 'bada': 'बड़ा',
+    'duniya': 'दुनिया', 'raaz': 'राज़', 'har': 'हर', 'rasta': 'रास्ता', 'amar': 'अमर', 'kholta': 'खोलता',
+    'samajh': 'समझ', 'aayega': 'आएगा', 'dhyan': 'ध्यान', 'dekho': 'देखो', 'rokkar': 'रोककर', 'suno': 'सुनो',
+    'kahani': 'कहानी', 'shandar': 'शानदार', 'adbhut': 'अद्भुत', 'jhalak': 'झलक', 'akela': 'अकेला', 'wolf': 'भेड़िया',
+    'bhediya': 'भेड़िया', 'pahad': 'पहाड़', 'choti': 'चोटी', 'khada': 'खड़ा', 'shanti': 'शांति', 'lamha': 'लम्हा',
+    'badi': 'बड़ी', 'seekh': 'सीख', 'khubsurati': 'खूबसूरती', 'drishya': 'दृश्य', 'anubhav': 'अनुभव', 'zidd': 'ज़िद',
+    'manzil': 'मंजिल', 'ban': 'बन', 'jata': 'जाता', 'shuru': 'शुरू', 'sabko': 'सबको', 'prerit': 'प्रेरित'
+  };
+
+  let out = String(text);
+  Object.keys(wordMap).forEach(w => {
+    const reg = new RegExp('\\b' + w + '\\b', 'gi');
+    out = out.replace(reg, wordMap[w]);
+  });
+  return out;
+}
+
 function cleanTtsText(rawText) {
-  return String(rawText || '')
+  const cleaned = String(rawText || '')
     .replace(/#\w+/g, '')
     .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}]/gu, '')
     .replace(/[()[\]{}]/g, '')
@@ -845,36 +870,39 @@ function cleanTtsText(rawText) {
     .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // If text is Hinglish/Hindi, convert Roman words to Devanagari Hindi
+  return convertHinglishToHindiDevanagari(cleaned);
 }
 
 // ─── NATURAL INDIAN VOICE SELECTION ENGINE ─────────────────────────────────────
-// Selects authentic Indian/Hindi voices to ensure 100% natural pronunciation
-// without robotic western accents or distorted pitch formants.
 function getBestVoiceForLanguage(voices, gender, language, text) {
   if (!voices || voices.length === 0) return null;
 
   const isHindiText = language === 'Hindi' || language === 'Hinglish' || /[\u0900-\u097F]/.test(text);
 
   if (isHindiText) {
-    if (gender === 'Male') {
-      // Male Indian Hindi voice: EXCLUDE female voices (Google हिन्दी, Kalpana, Heera, Zira)
-      return voices.find(v => (v.lang.includes('hi') || v.lang.includes('IN')) && /Hemant|Ravi|Madhur|Prabhat|Male|Guy|David|Mark/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google/i.test(v.name))
-          || voices.find(v => (v.lang.includes('hi') || v.lang.includes('IN')) && !/Female|Kalpana|Heera|Zira|Google/i.test(v.name))
-          || voices.find(v => /Male|Guy|David|Mark|George/i.test(v.name))
-          || voices[0];
-    } else {
-      // Female Indian Hindi voice (Google हिन्दी, Microsoft Kalpana, Microsoft Heera)
-      return voices.find(v => (v.lang.includes('hi') || v.name.includes('हिन्दी') || v.name.includes('Hindi')) && !/Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name))
-          || voices.find(v => v.lang.includes('IN') && !/Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name))
-          || voices.find(v => /Female|Zira|Hazel|Susan/i.test(v.name))
-          || voices[0];
+    // STRICT FILTER: Only match authentic Indian/Hindi voices (hi-IN, en-IN, Hindi)
+    const indianVoices = voices.filter(v => 
+      v.lang.includes('hi') || v.lang.includes('IN') || 
+      /Hindi|हिन्दी|India/i.test(v.name)
+    );
+
+    if (indianVoices.length > 0) {
+      if (gender === 'Male') {
+        return indianVoices.find(v => /Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name)) || indianVoices[0];
+      } else {
+        return indianVoices.find(v => /Female|Kalpana|Heera|Swara|Google/i.test(v.name)) || indianVoices[0];
+      }
     }
+    // Fallback ONLY to hi-IN voices if available
+    return voices.find(v => v.lang.startsWith('hi')) || voices[0];
   } else {
     // English language
     if (gender === 'Male') {
-      return voices.find(v => /Male|Guy|David|Mark|George|Ravi|Hemant|Madhur|Prabhat/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google/i.test(v.name)) || voices[0];
+      return voices.find(v => /Male|Guy|David|Mark|George/i.test(v.name)) || voices[0];
     } else {
-      return voices.find(v => /Female|Zira|Kalpana|Google|Hazel|Susan|Neerja|Swara/i.test(v.name)) || voices[0];
+      return voices.find(v => /Female|Zira|Hazel|Susan/i.test(v.name)) || voices[0];
     }
   }
 }

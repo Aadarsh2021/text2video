@@ -254,12 +254,37 @@ app.post("/generate", async (req, res) => {
   return res.json({ success: true, provider: 'ReelShorts Director Engine 🎬', data: reelData });
 });
 
+function convertHinglishToHindiDevanagari(text) {
+  if (!text) return '';
+  if (/[\u0900-\u097F]/.test(text)) return text; // Already Devanagari script
+
+  const wordMap = {
+    'main': 'मैं', 'aaj': 'आज', 'ek': 'एक', 'naye': 'नए', 'safar': 'सफर', 'par': 'पर', 'nikla': 'निकला', 'hoon': 'हूँ',
+    'hai': 'है', 'hain': 'हैं', 'yeh': 'यह', 'woh': 'वह', 'kya': 'क्या', 'aapko': 'आपको', 'pata': 'पता', 'bhi': 'भी',
+    'nahi': 'नहीं', 'nahin': 'नहीं', 'aur': 'और', 'se': 'से', 'ko': 'को', 'ka': 'का', 'ki': 'की', 'ke': 'के',
+    'baarish': 'बारिश', 'boondon': 'बूंदों', 'beech': 'बीच', 'shehar': 'शहर', 'sabse': 'सबसे', 'bada': 'बड़ा',
+    'duniya': 'दुनिया', 'raaz': 'राज़', 'har': 'हर', 'rasta': 'रास्ता', 'amar': 'अमर', 'kholta': 'खोलता',
+    'samajh': 'समझ', 'aayega': 'आएगा', 'dhyan': 'ध्यान', 'dekho': 'देखो', 'rokkar': 'रोककर', 'suno': 'सुनो',
+    'kahani': 'कहानी', 'shandar': 'शानदार', 'adbhut': 'अद्भुत', 'jhalak': 'झलक', 'akela': 'अकेला', 'wolf': 'भेड़िया',
+    'bhediya': 'भेड़िया', 'pahad': 'पहाड़', 'choti': 'चोटी', 'khada': 'खड़ा', 'shanti': 'शांति', 'lamha': 'लम्हा',
+    'badi': 'बड़ी', 'seekh': 'सीख', 'khubsurati': 'खूबसूरती', 'drishya': 'दृश्य', 'anubhav': 'अनुभव', 'zidd': 'ज़िद',
+    'manzil': 'मंजिल', 'ban': 'बन', 'jata': 'जाता', 'shuru': 'शुरू', 'sabko': 'सबको', 'prerit': 'प्रेरित'
+  };
+
+  let out = String(text);
+  Object.keys(wordMap).forEach(w => {
+    const reg = new RegExp('\\b' + w + '\\b', 'gi');
+    out = out.replace(reg, wordMap[w]);
+  });
+  return out;
+}
+
 // 3. 100% Free Neural MP3 TTS Voice Endpoint (Handles both /tts and /api/tts)
 app.get(["/tts", "/api/tts"], async (req, res) => {
   const rawText = req.query.text || 'नमस्ते';
   const langParam = req.query.lang === 'en' ? 'en' : 'hi';
 
-  const cleanNarration = String(rawText || '')
+  const cleaned = String(rawText || '')
     .replace(/#\w+/g, '')
     .replace(/[()[\]{}]/g, '')
     .replace(/\bAI\b/gi, 'ए आई')
@@ -267,6 +292,9 @@ app.get(["/tts", "/api/tts"], async (req, res) => {
     .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  // Transliterate Roman Hinglish to Devanagari Hindi for pure Indian TTS voice
+  const cleanNarration = langParam === 'hi' ? convertHinglishToHindiDevanagari(cleaned) : cleaned;
 
   if (!cleanNarration) return res.status(400).send('Empty text');
 
