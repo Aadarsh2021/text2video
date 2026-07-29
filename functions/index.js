@@ -7,8 +7,8 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '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';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AQ.Ab8RN6ITYPEDxsbPTNwX1cEquNaJk1_k5QTph85lGccm5lSGLg';
 
 // Shared prompt builder for all providers with Deep Concept Understanding Engine
 function buildScriptPrompt(requestData) {

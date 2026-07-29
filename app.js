@@ -935,22 +935,27 @@ function getBestVoiceForLanguage(voices, gender, language, text) {
   const isHindiText = language === 'Hindi' || language === 'Hinglish' || /[\u0900-\u097F]/.test(text);
 
   if (isHindiText) {
-    // STRICT FILTER: Match authentic Indian/Hindi voices only
-    const indianVoices = voices.filter(v => 
-      v.lang.includes('hi') || v.lang.includes('IN') || 
+    // Filter STRICTLY for authentic Indian / Hindi voices ONLY
+    const strictHindiVoices = voices.filter(v => 
+      (v.lang && (v.lang.includes('hi') || v.lang.includes('IN'))) || 
       /Hindi|हिन्दी|India/i.test(v.name)
     );
 
-    if (indianVoices.length > 0) {
+    // Reject any Western US/UK/AU voices
+    const nonWesternHindi = strictHindiVoices.filter(v => !/David|Mark|George|Zira|Hazel|Susan|Linda|Catherine|James|Richard/i.test(v.name));
+
+    if (nonWesternHindi.length > 0) {
       if (gender === 'Male') {
-        return indianVoices.find(v => /Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google हिन्दी/i.test(v.name)) 
-            || indianVoices.find(v => v.lang.includes('hi')) 
-            || indianVoices[0];
+        return nonWesternHindi.find(v => /Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google हिन्दी/i.test(v.name)) 
+            || nonWesternHindi.find(v => v.lang.includes('hi')) 
+            || nonWesternHindi[0];
       } else {
-        return indianVoices.find(v => /Female|Kalpana|Heera|Swara|Google/i.test(v.name)) || indianVoices[0];
+        return nonWesternHindi.find(v => /Female|Kalpana|Heera|Swara|Google/i.test(v.name)) || nonWesternHindi[0];
       }
     }
-    return voices.find(v => v.lang.startsWith('hi')) || voices[0];
+
+    // If no Indian/Hindi voice installed on device, return NULL so browser uses native Google Indian Cloud Voice
+    return null;
   } else {
     // English language
     if (gender === 'Male') {
