@@ -420,5 +420,5 @@ app.get(["/image", "/api/image"], async (req, res) => {
   return res.send(svgPlaceholder);
 });
 
-// Export Cloud Function
-exports.api = onRequest({ timeoutSeconds: 60, memory: "512MiB", cors: true }, app);
+// Export Cloud Function with public unauthenticated invoker access
+exports.api = onRequest({ timeoutSeconds: 60, memory: "512MiB", cors: true, invoker: "public" }, app);
