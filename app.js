@@ -575,10 +575,62 @@ Schema:
     console.warn('Client Pollinations script AI error:', e.message);
   }
 
-  // Natural Subject & Theme Extractor
+  // Tier 1 Client-Side: Groq Cloud Llama 3.3 70B Versatile (Free, instant AI script generation)
+  try {
+    const sysPrompt = `You are an Oscar-Winning Hollywood Director & Master Storyteller.
+Transform the prompt: "${userPrompt}" into a video script.
+Target Duration: ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
+Language: "${language}". Voice Gender: "${voiceGender}".
+CRITICAL: If Language is "Hindi", write BOTH "narration" and "spokenNarration" 100% in Devanagari Hindi script (e.g. "मैं आज एक नए सफर पर निकला हूँ"). Never return Roman English text.
+
+Return STRICT JSON format:
+{
+  "title": "Short Title",
+  "subjectCharacter": "Subject",
+  "targetDuration": ${targetDuration},
+  "hook": "Viral hook line",
+  "caption": "Post caption with hashtags",
+  "hashtags": ["#viral", "#reels", "#ai"],
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "visual": "Detailed 8k cinematic image prompt",
+      "narration": "Devanagari Hindi dialogue",
+      "spokenNarration": "Devanagari Hindi dialogue",
+      "onScreen": "Scene 01 • Title",
+      "duration": ${sceneDuration}
+    }
+  ]
+}`;
+
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer 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'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'system', content: sysPrompt }, { role: 'user', content: promptText }],
+        temperature: 0.7,
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (groqRes.ok) {
+      const jsonRes = await groqRes.json();
+      const rawJsonStr = jsonRes.choices?.[0]?.message?.content || '';
+      const parsed = JSON.parse(rawJsonStr);
+      if (parsed && Array.isArray(parsed.scenes) && parsed.scenes.length > 0) return parsed;
+    }
+  } catch (groqErr) {
+    console.warn('Groq client-side fetch note:', groqErr.message);
+  }
+
+  // Tier 2: Natural Subject & Theme Extractor Fallback
   let cleanTopic = promptText
     .replace(/cinematic composition|ultra-realistic|emotional atmosphere|photorealistic 8k|8k|hd|volumetric lighting|4k|hyperdetailed|masterpiece|dramatic lighting/gi, '')
-    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .replace(/[^a-zA-Z0-9\s\u0900-\u097F]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -594,18 +646,31 @@ Schema:
     'Photorealistic atmospheric golden hour lighting over'
   ];
 
-  const naturalStoryLines = [
-    `Khamoshi aur gehrai se bhari is shandar duniya mein, ${coreSubject} ki ek adbhut jhalak...`,
-    `Aasman mein bikharti roshni aur thandi hawaon ke beech, har ek pal ek naya raaz kholta hai.`,
-    `Gahrai se dekhoge toh samajh aayega ki is drishti mein kitni badi taakat aur shanti chhipi hai.`,
-    `Yeh sirf ek nazara nahi hai, yeh ek aisa anubhav hai jo aapke dil ko chhu jayega!`,
-    `Akelapan aur shanti ke beech, ek naye safar ki shuruaat hoti hai.`,
-    `Yeh hai safalta aur dridhta ki sabse shandar aur yaadgar misaal.`
+  const hindiFallbackLines = [
+    `${coreSubject} की भक्ति, शक्ति और शांति से भरी एक अद्भुत गाथा...`,
+    `आसमान में बिखरती दिव्य रोशनी और शांत हवाओं के बीच, हर एक पल एक नया राज़ खोलता है।`,
+    `गहराई से देखोगे तो समझ आएगा कि इस भक्ति में कितनी बड़ी ताकत और शांति छिपी है।`,
+    `यह सिर्फ एक नज़ारा नहीं है, यह एक ऐसा दिव्य अनुभव है जो आपके दिल को छू जाएगा!`,
+    `भक्ति और समर्पण के इस सफर में, मन को असीम शांति और संबल मिलता है।`,
+    `यह है श्रद्धा और विश्वास की सबसे शानदार और अमर मिसाल।`
   ];
+
+  const englishFallbackLines = [
+    `In a world filled with wonder, a brand new story of ${coreSubject} unfolds...`,
+    `As golden light beams through the sky, every single moment reveals a hidden truth.`,
+    `Look closely and you will discover the immense strength and peace hidden within.`,
+    `This is not just a scene, it is a powerful emotional experience that touches your heart!`,
+    `Through focus and dedication, a new legendary journey begins today.`,
+    `A timeless symbol of strength, courage, and ultimate triumph.`
+  ];
+
+  const naturalStoryLines = language === 'English' ? englishFallbackLines : hindiFallbackLines;
 
   let title = 'Cinematic Story: ' + coreSubject;
   let subjectChar = coreSubject;
-  let hook = `Scroll rokkar dhyan se dekho — ${coreSubject} ki ek aisi adbhut aur viral kahani!`;
+  let hook = language === 'English' 
+    ? `Stop scrolling — Watch the incredible story of ${coreSubject}!` 
+    : `ध्यान से देखो — ${coreSubject} की एक ऐसी अद्भुत और दिव्य कहानी!`;
   let caption = '✨ ' + cleanTopic + ' #Reels #Viral #AIVideo #Cinematic';
   let hashtags = ['#viral', '#reels', '#ai', '#cinematic'];
 
