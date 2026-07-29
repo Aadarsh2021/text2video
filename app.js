@@ -93,17 +93,17 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
     const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
     const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneImagePrompt + ', cinematic masterpiece 8k')}?width=540&height=960&nologo=true&seed=${uniqueSeed}`;
     
-    // Tiered image loading failover
-    img.src = directPollinationsUrl;
+    // Use multi-tier backend image proxy endpoint
+    const proxyUrl = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
+    img.src = proxyUrl;
 
     img.onload = () => safeDone(img);
     img.onerror = () => {
-      // Fallback 1: Cloud function proxy endpoint
-      const proxyUrl = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
+      // Fallback: Pollinations Direct
       const fallbackImg = new Image();
       fallbackImg.onload = () => safeDone(fallbackImg);
       fallbackImg.onerror = () => safeDone(createFallbackCanvasImage(sc.color || '#2563eb', '#06050b'));
-      fallbackImg.src = proxyUrl;
+      fallbackImg.src = directPollinationsUrl;
     };
 
     // Audio preload in parallel (TTS server handles concurrency fine)
@@ -509,29 +509,57 @@ async function generateScriptClientSide(promptText, duration, language, voiceGen
   const sceneDuration = Number((targetDuration / sceneCount).toFixed(1));
 
   try {
-    const sysInstruction = `You are ChatGPT and Gemini level Master Content Director AI. Analyze user concept deeply: "${promptText}".
-Understand subject, theme, emotional tone, visual aesthetic, and audience engagement strategy.
-Generate a high-converting short video script for Instagram Reels / TikTok in ${language || 'Hinglish'}.
-Output ONLY a raw valid JSON object (no markdown, no backticks) with schema:
+    const sysInstruction = `You are an Oscar-Winning Hollywood Film Director, Master Storyteller, and Lead Content Strategist.
+Your mission is to deeply analyze and transform the user's prompt into an unforgettable short video masterpiece.
+
+USER PROMPT: "${promptText}"
+
+CRITICAL CONCEPT UNDERSTANDING & DIRECTION (STRICT):
+1. DEEP PROMPT COMPREHENSION:
+   - Carefully analyze every single word of the user prompt: "${promptText}".
+   - Identify the EXACT character/subject (e.g. Iron Man, Astronaut, Black Panther animal, Cartoon Bunny, Samurai, Dragon, Eagle, Wolf).
+   - Identify the requested visual aesthetic (e.g. 3D Pixar, Studio Ghibli watercolor, Photorealistic 8K, 2D Anime, Cyberpunk, ultra-realistic cinematic).
+   - DISAMBIGUATION RULE: If the prompt says "Black Panther" with "wildlife documentary" or "jungle/rain/animal" context → it is the REAL ANIMAL, NOT the Marvel superhero. Always use context to pick the right interpretation.
+   - CINEMATIC MOOD PROMPTS: If the prompt describes a mood/atmosphere with no explicit story (e.g. 'lone astronaut in abandoned city at sunrise'), YOU MUST INVENT a compelling emotional arc — give the character an inner journey, a discovery, a moment of wonder, or a transformation across the scenes.
+   - NO CHARACTER IN PROMPT: If the prompt has no human/animal character (e.g. 'Dubai penthouse at sunset', 'Earth seen from space', 'magical floating library') → INVENT a protagonist who is experiencing that scene. E.g. a billionaire reflecting on life, an astronaut watching Earth, a scholar discovering the magical library.
+
+2. 100% WORD-FOR-WORD SCRIPT MATCHING (SELECTED LANGUAGE: "${language || 'Hinglish'}"):
+   - IF LANGUAGE IS "Hinglish":
+     * "narration" = Display subtitles in Roman Hinglish (e.g. "Main aaj ek naye safar par nikla hoon").
+     * "spokenNarration" = EXACT SAME SENTENCE in Devanagari Hindi script (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+   - IF LANGUAGE IS "Hindi":
+     * BOTH "narration" and "spokenNarration" MUST BE IN DEVANAGARI HINDI SCRIPT (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+   - IF LANGUAGE IS "English":
+     * BOTH "narration" and "spokenNarration" MUST BE IN ENGLISH (e.g. "Today I embark on a brand new journey").
+
+3. VOICE GENDER & GRAMMAR ACCURACY:
+   - Selected Voice Gender: "${voiceGender || 'Male'}".
+   - If Male: Use Male Hindi grammar ("Main kar raha hoon", "Main dekhta hoon").
+   - If Female: Use Female Hindi grammar ("Main kar rahi hoon", "Main dekhti hoon").
+
+4. ART STYLE SEPARATION:
+   - Video terms (8K, IMAX, photorealistic) are VISUAL INSTRUCTIONS ONLY. Never write them in narration or spokenNarration text.
+
+Return STRICT VALID JSON ONLY.
+Schema:
 {
-  "title": "Short punchy video title",
-  "subjectCharacter": "Main subject",
+  "title": "Captivating Title",
+  "subjectCharacter": "Main Character Name",
   "targetDuration": ${targetDuration},
-  "hook": "Attention-grabbing viral opening hook line",
-  "caption": "Engaging social post caption with hashtags",
+  "hook": "Unskippable viral hook line",
+  "caption": "Viral post caption with hashtags",
   "hashtags": ["#viral", "#reels", "#ai"],
   "scenes": [
     {
       "sceneNumber": 1,
-      "visual": "Detailed cinematic AI image generation prompt with camera angle, lighting, aesthetic, 8k",
-      "narration": "Natural engaging Hinglish spoken text line for this scene",
-      "spokenNarration": "Hindi script in Devanagari script for TTS voice engine",
-      "onScreen": "Scene 01 • Scene Title",
+      "visual": "Hyper-detailed cinematic image generation prompt with camera angle, lighting, 8k",
+      "narration": "Natural engaging Roman Hinglish subtitle line for this scene",
+      "spokenNarration": "Hindi script in Devanagari script for natural TTS voice playback",
+      "onScreen": "Scene 01 • Title",
       "duration": ${sceneDuration}
     }
   ]
-}
-Ensure exactly ${sceneCount} scenes. Make visual prompts hyper-detailed and cinematic for text-to-image AI models.`;
+}`;
 
     const pollRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(sysInstruction)}?json=true`);
     if (pollRes.ok) {
@@ -917,17 +945,12 @@ function playStudioNaturalVoice(startSceneIdx) {
       window.speechSynthesis.speak(utt);
     };
 
-    // If running on static host (Firebase), use WebSpeech Synthesis directly
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-      speakWebSpeechFallback();
-      return;
-    }
-
     let audio = state.sceneAudios[sceneIdx];
     if (!audio) {
       const lang = state.language === 'English' ? 'en' : 'hi';
       const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
       audio = new Audio(ttsUrl);
+      audio.preload = 'auto';
       state.sceneAudios[sceneIdx] = audio;
     }
 
@@ -941,12 +964,15 @@ function playStudioNaturalVoice(startSceneIdx) {
     };
 
     audio.onended = handleEnded;
-    audio.onerror = speakWebSpeechFallback;
+    audio.onerror = () => {
+      console.warn('MP3 TTS Audio error, falling back to WebSpeech');
+      speakWebSpeechFallback();
+    };
 
-    const playPromise = audio.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(() => speakWebSpeechFallback());
-    }
+    audio.play().catch(e => {
+      console.warn('Audio play autoplay failure:', e.message);
+      speakWebSpeechFallback();
+    });
   }
 
   function advanceNext() {

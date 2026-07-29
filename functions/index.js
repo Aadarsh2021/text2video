@@ -10,7 +10,7 @@ app.use(express.json());
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
-// Deep LLM Master Director Prompt Builder
+// Shared prompt builder for all providers with Deep Concept Understanding Engine
 function buildScriptPrompt(requestData) {
   const userPrompt = String(requestData.prompt || '').trim();
   const targetDuration = Number(requestData.duration || requestData.targetDuration) || 30;
@@ -18,30 +18,74 @@ function buildScriptPrompt(requestData) {
   const voiceGender = requestData.voiceGender || 'Male';
   const sceneCount = targetDuration <= 15 ? 3 : targetDuration <= 30 ? 4 : targetDuration <= 45 ? 6 : 8;
   const sceneDuration = Math.round(targetDuration / sceneCount);
+  const targetWords = Math.round(sceneDuration * 2.5); // e.g. 8s = ~20 words
 
-  return `You are ChatGPT and Gemini level Master Content Director AI. Analyze user concept deeply: "${userPrompt}".
-Understand subject, theme, emotional tone, visual aesthetic, and audience engagement strategy.
-Generate a high-converting short video script for Instagram Reels / TikTok in ${language}.
-Output ONLY a raw valid JSON object (no markdown, no backticks) with schema:
+  return `You are an Oscar-Winning Hollywood Film Director, Master Storyteller, and Lead Content Strategist.
+Your mission is to deeply analyze and transform the user's prompt into an unforgettable short video masterpiece.
+
+USER PROMPT: "${userPrompt}"
+
+CRITICAL CONCEPT UNDERSTANDING & DIRECTION (STRICT):
+1. DEEP PROMPT COMPREHENSION:
+   - Carefully analyze every single word of the user prompt: "${userPrompt}".
+   - Identify the EXACT character/subject (e.g. Iron Man, Astronaut, Black Panther animal, Cartoon Bunny, Samurai, Dragon, Eagle, Wolf).
+   - Identify the requested visual aesthetic (e.g. 3D Pixar, Studio Ghibli watercolor, Photorealistic 8K, 2D Anime, Cyberpunk, ultra-realistic cinematic).
+   - DISAMBIGUATION RULE: If the prompt says "Black Panther" with "wildlife documentary" or "jungle/rain/animal" context → it is the REAL ANIMAL, NOT the Marvel superhero. Always use context to pick the right interpretation.
+   - CINEMATIC MOOD PROMPTS: If the prompt describes a mood/atmosphere with no explicit story (e.g. 'lone astronaut in abandoned city at sunrise'), YOU MUST INVENT a compelling emotional arc — give the character an inner journey, a discovery, a moment of wonder, or a transformation across the scenes.
+   - NO CHARACTER IN PROMPT: If the prompt has no human/animal character (e.g. 'Dubai penthouse at sunset', 'Earth seen from space', 'magical floating library') → INVENT a protagonist who is experiencing that scene. E.g. a billionaire reflecting on life, an astronaut watching Earth, a scholar discovering the magical library.
+   - VEHICLE/MACHINE SUBJECTS: If the main subject is a vehicle (Lamborghini, Formula 1 car) with no named driver → narrate from the DRIVER's perspective — their focus, adrenaline, emotion. subjectCharacter = the driver/pilot, not the machine.
+   - VIDEO PRODUCTION TERMS (IMAX, 4K HDR, 8K, drone shots, volumetric lighting, ultra-realistic, slow motion, cinematic shot, wide shot, close-up, aerial shot, FPV, HDR, orchestral, motion blur): These are VISUAL STYLE HINTS ONLY. Put them in the "visual" field ONLY. NEVER write them in narration/spokenNarration. A narrator speaks ONLY about the character's emotions, actions, and story — not about cameras, resolution, or lighting techniques.
+   - DO NOT return generic template stories. Every single word must reflect the user's exact prompt, character, and requested style.
+
+2. TARGET DURATION & SCENE TIMING:
+   - Target Duration: EXACTLY ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
+   - Scene Narration Length: Minimum ${targetWords} words per scene. Write a rich, immersive, continuous story.
+
+3. 100% WORD-FOR-WORD SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
+   - IF LANGUAGE IS "Hinglish":
+     * "narration" = Display subtitles in Roman Hinglish (e.g. "Main aaj ek naye safar par nikla hoon").
+     * "spokenNarration" = EXACT SAME SENTENCE in Devanagari Hindi script (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+   - IF LANGUAGE IS "Hindi":
+     * BOTH "narration" and "spokenNarration" MUST BE IN DEVANAGARI HINDI SCRIPT (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+   - IF LANGUAGE IS "English":
+     * BOTH "narration" and "spokenNarration" MUST BE IN ENGLISH (e.g. "Today I embark on a brand new journey").
+
+4. VOICE GENDER & GRAMMAR ACCURACY:
+   - Selected Voice Gender: "${voiceGender}".
+   - If Male ("${voiceGender}" === "Male"): Use Male Hindi grammar ("Main kar raha hoon", "Main dekhta hoon", "Main gaya").
+   - If Female ("${voiceGender}" === "Female"): Use Female Hindi grammar ("Main kar rahi hoon", "Main dekhti hoon", "Main gayi").
+
+5. VISUAL ARTWORK PROMPT IN EVERY SCENE:
+   - Every single scene's "visual" MUST combine:
+     [Subject Character Name] + [Scene Specific Action & Pose] + [User Requested Art Style & Lighting].
+   - EVERY SCENE MUST FEATURE THE MAIN CHARACTER IN ACTION! Never return empty landscapes.
+
+6. ART STYLE SEPARATION (CRITICAL — DO NOT BREAK THIS RULE):
+   - Art style keywords (e.g. "3D Pixar", "Studio Ghibli", "Photorealistic 8K", "Cyberpunk neon", "2D Anime", "Watercolor") are VISUAL RENDERING INSTRUCTIONS ONLY.
+   - They MUST appear ONLY in the "visual" field for image generation.
+   - They must NEVER appear in "narration" or "spokenNarration" dialogue text.
+
+7. Return STRICT VALID JSON ONLY. No markdown wrapper, no extra text.
+
+JSON Structure (strict):
 {
-  "title": "Short punchy video title",
-  "subjectCharacter": "Main subject",
+  "title": "Captivating Title matching prompt",
+  "subjectCharacter": "Exact Main Character/Subject Name",
   "targetDuration": ${targetDuration},
-  "hook": "Attention-grabbing viral opening hook line",
-  "caption": "Engaging social post caption with hashtags",
+  "hook": "Unskippable viral hook line (10+ words)",
+  "caption": "Viral Instagram post caption with relevant emojis and hashtags",
   "hashtags": ["#viral", "#reels", "#ai"],
   "scenes": [
     {
       "sceneNumber": 1,
-      "visual": "Detailed cinematic AI image generation prompt with camera angle, lighting, aesthetic, 8k",
-      "narration": "Natural engaging Hinglish spoken text line for this scene",
-      "spokenNarration": "Hindi script in Devanagari script for TTS voice engine",
+      "visual": "Hyper-detailed cinematic image generation prompt with camera angle, lighting, subject action, 8k",
+      "narration": "Natural engaging Roman Hinglish subtitle line for this scene",
+      "spokenNarration": "Hindi script in Devanagari script for natural TTS voice playback",
       "onScreen": "Scene 01 • Scene Title",
       "duration": ${sceneDuration}
     }
   ]
-}
-Ensure exactly ${sceneCount} scenes. Make visual prompts hyper-detailed and cinematic for text-to-image AI models.`;
+}`;
 }
 
 // 1. Script Generation Endpoint
@@ -210,12 +254,93 @@ app.post("/generate", async (req, res) => {
   return res.json({ success: true, provider: 'ReelShorts Director Engine 🎬', data: reelData });
 });
 
-// 2. AI Image Generator Endpoint
-app.get("/image", (req, res) => {
+// 3. 100% Free Neural MP3 TTS Voice Endpoint (Handles both /tts and /api/tts)
+app.get(["/tts", "/api/tts"], async (req, res) => {
+  const rawText = req.query.text || 'नमस्ते';
+  const langParam = req.query.lang === 'en' ? 'en' : 'hi';
+
+  const cleanNarration = String(rawText || '')
+    .replace(/#\w+/g, '')
+    .replace(/[()[\]{}]/g, '')
+    .replace(/\bAI\b/gi, 'ए आई')
+    .replace(/\bVS\b/gi, 'वर्सेस')
+    .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleanNarration) return res.status(400).send('Empty text');
+
+  try {
+    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanNarration)}&tl=${langParam}&client=tw-ob`;
+    const googleRes = await fetch(ttsUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+    });
+
+    if (googleRes.ok) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const arrayBuffer = await googleRes.arrayBuffer();
+      return res.send(Buffer.from(arrayBuffer));
+    }
+  } catch (e) {
+    console.warn('TTS streaming error:', e.message);
+  }
+
+  return res.status(500).json({ error: 'TTS stream failed' });
+});
+
+// 2. Multi-Tier AI Image Generator Endpoint (Handles both /image and /api/image)
+app.get(["/image", "/api/image"], async (req, res) => {
   const prompt = req.query.prompt || 'cinematic portrait';
   const seed = req.query.seed || Math.floor(Math.random() * 10000);
-  const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=540&height=960&seed=${seed}&nologo=true`;
-  return res.redirect(imageUrl);
+  const cleanPrompt = String(prompt).slice(0, 300);
+
+  // Helper to fetch & stream image buffer with 6s timeout
+  async function streamImage(url, providerName) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      const imgRes = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+
+      if (imgRes.ok) {
+        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+        if (contentType.includes('image')) {
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          const arrayBuffer = await imgRes.arrayBuffer();
+          res.send(Buffer.from(arrayBuffer));
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn(`[Image Failover] ${providerName} failed:`, e.message);
+    }
+    return false;
+  }
+
+  // Tier 1: Pollinations FLUX
+  const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', cinematic 8k')}?width=540&height=960&nologo=true&model=flux&seed=${seed}`;
+  if (await streamImage(fluxUrl, 'Pollinations FLUX')) return;
+
+  // Tier 2: Pollinations Turbo
+  const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
+  if (await streamImage(turboUrl, 'Pollinations Turbo')) return;
+
+  // Tier 3: Picsum Guaranteed Photographic HD Engine (Never rate limits)
+  const picsumUrl = `https://picsum.photos/seed/${seed}/540/960`;
+  if (await streamImage(picsumUrl, 'Picsum Engine')) return;
+
+  // Tier 4: SVG Poster Concept
+  const svgPlaceholder = `<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960" viewBox="0 0 540 960">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0f0c29"/><stop offset="100%" stop-color="#302b63"/></linearGradient></defs>
+    <rect width="540" height="960" fill="url(#g)"/>
+    <text x="270" y="430" font-family="Arial" font-size="48" fill="#a78bfa" text-anchor="middle">🎬</text>
+    <text x="270" y="500" font-family="Arial" font-size="18" font-weight="bold" fill="#e2e8f0" text-anchor="middle">AI Visual Concept</text>
+    <text x="270" y="540" font-family="Arial" font-size="13" fill="#94a3b8" text-anchor="middle">${cleanPrompt.slice(0, 45)}</text>
+  </svg>`;
+  res.setHeader('Content-Type', 'image/svg+xml');
+  return res.send(svgPlaceholder);
 });
 
 // Export Cloud Function
