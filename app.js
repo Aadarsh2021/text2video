@@ -87,24 +87,35 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
 
     // Image — use sc.visual directly
     const img = new Image();
+    img.crossOrigin = 'anonymous'; // Enforce CORS origin-clean canvas drawing
+
     const sceneImagePrompt = (sc.visual || '').trim()
       || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} portrait`;
 
     const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
     const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneImagePrompt + ', cinematic masterpiece 8k')}?width=540&height=960&nologo=true&seed=${uniqueSeed}`;
     
-    // Use multi-tier backend image proxy endpoint
+    // Multi-tier backend image proxy with direct Cloud Run fallback
     const proxyUrl = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
-    img.src = proxyUrl;
+    const directCloudRunImageUrl = `https://api-vvwtkdts6q-uc.a.run.app/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
 
     img.onload = () => safeDone(img);
     img.onerror = () => {
-      // Fallback: Pollinations Direct
-      const fallbackImg = new Image();
-      fallbackImg.onload = () => safeDone(fallbackImg);
-      fallbackImg.onerror = () => safeDone(createFallbackCanvasImage(sc.color || '#2563eb', '#06050b'));
-      fallbackImg.src = directPollinationsUrl;
+      // Tier 2: Direct Cloud Run Function
+      const crImg = new Image();
+      crImg.crossOrigin = 'anonymous';
+      crImg.onload = () => safeDone(crImg);
+      crImg.onerror = () => {
+        // Tier 3: Pollinations Direct
+        const fallbackImg = new Image();
+        fallbackImg.crossOrigin = 'anonymous';
+        fallbackImg.onload = () => safeDone(fallbackImg);
+        fallbackImg.onerror = () => safeDone(createFallbackCanvasImage('#312e81', '#06050b', `Scene ${i+1}`));
+        fallbackImg.src = directPollinationsUrl;
+      };
+      crImg.src = directCloudRunImageUrl;
     };
+    img.src = proxyUrl;
 
     // Audio preload in parallel (TTS server handles concurrency fine)
     const rawText = sc.spokenNarration || sc.narration || sc.onScreen || '';
@@ -676,7 +687,7 @@ async function generateVideo() {
   try {
     let resultData = null;
     try {
-      const res = await fetch('/api/generate', {
+      let res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -687,6 +698,20 @@ async function generateVideo() {
           voiceGender: state.voiceGender
         })
       });
+      if (!res.ok) {
+        // Fallback to direct Cloud Run URL
+        res = await fetch('https://api-vvwtkdts6q-uc.a.run.app/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt,
+            duration: state.duration,
+            language: state.language,
+            style: state.style,
+            voiceGender: state.voiceGender
+          })
+        });
+      }
       const ct = res.headers.get('content-type') || '';
       if (res.ok && ct.includes('json')) {
         const jsonRes = await res.json();
