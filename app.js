@@ -997,11 +997,10 @@ function getBestVoiceForLanguage(voices, gender, language, text) {
   } else {
     // English language
     if (gender === 'Male') {
-      return voices.find(v => /Male|Guy|David|Mark|George/i.test(v.name)) || voices[0];
-    } else {
-      return voices.find(v => /Female|Zira|Hazel|Susan/i.test(v.name)) || voices[0];
     }
   }
+}
+
 function cleanTtsText(text) {
   let cleaned = String(text || '')
     .replace(/#\w+/g, '')
