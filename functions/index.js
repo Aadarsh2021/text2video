@@ -7,6 +7,14 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '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';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AQ.Ab8RN6ITYPEDxsbPTNwX1cEquNaJk1_k5QTph85lGccm5lSGLg';
 

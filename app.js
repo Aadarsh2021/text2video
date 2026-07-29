@@ -110,10 +110,15 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
     const rawText = sc.spokenNarration || sc.narration || sc.onScreen || '';
     const cleanText = cleanTtsText(rawText);
     const lang = state.language === 'English' ? 'en' : 'hi';
-    const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
+    const proxyTtsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
+    const directTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=${lang}&client=tw-ob`;
+
     const audio = new Audio();
     audio.preload = 'auto';
-    audio.src = ttsUrl;
+    audio.src = proxyTtsUrl;
+    audio.onerror = () => {
+      audio.src = directTtsUrl;
+    };
     state.sceneAudios[i] = audio;
   });
 
