@@ -1131,34 +1131,41 @@ function playStudioNaturalVoice(startSceneIdx) {
       window.speechSynthesis.speak(utt);
     };
 
-    let audio = state.sceneAudios[sceneIdx];
-    if (!audio) {
-      const lang = state.language === 'English' ? 'en' : 'hi';
-      const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
-      audio = new Audio(ttsUrl);
-      audio.preload = 'auto';
-      state.sceneAudios[sceneIdx] = audio;
+    // Female Voice: Uses Google Neural Female MP3 Stream
+    // Male Voice: Uses WebSpeech Deep Indian Male Heroic Voice Engine
+    if (state.voiceGender === 'Female') {
+      let audio = state.sceneAudios[sceneIdx];
+      if (!audio) {
+        const lang = state.language === 'English' ? 'en' : 'hi';
+        const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
+        audio = new Audio(ttsUrl);
+        audio.preload = 'auto';
+        state.sceneAudios[sceneIdx] = audio;
+      }
+
+      audio.volume = state.volume;
+      audio.currentTime = 0;
+      state.currentAudio = audio;
+
+      audio.onplay = () => {
+        state.speaking = true;
+        if (state.currentScene !== sceneIdx) changeScene(sceneIdx);
+      };
+
+      audio.onended = handleEnded;
+      audio.onerror = () => {
+        console.warn('MP3 TTS Audio error, falling back to WebSpeech');
+        speakWebSpeechFallback();
+      };
+
+      audio.play().catch(e => {
+        console.warn('Audio play autoplay failure:', e.message);
+        speakWebSpeechFallback();
+      });
+    } else {
+      // Male Voice — Guaranteed Deep Indian Male Heroic Voice Engine
+      speakWebSpeechFallback();
     }
-
-    audio.volume = state.volume;
-    audio.currentTime = 0;
-    state.currentAudio = audio;
-
-    audio.onplay = () => {
-      state.speaking = true;
-      if (state.currentScene !== sceneIdx) changeScene(sceneIdx);
-    };
-
-    audio.onended = handleEnded;
-    audio.onerror = () => {
-      console.warn('MP3 TTS Audio error, falling back to WebSpeech');
-      speakWebSpeechFallback();
-    };
-
-    audio.play().catch(e => {
-      console.warn('Audio play autoplay failure:', e.message);
-      speakWebSpeechFallback();
-    });
   }
 
   function advanceNext() {
