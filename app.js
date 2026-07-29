@@ -1,0 +1,1212 @@
+// ReelShorts AI — 100% Preload Gate & Total Player Control Engine
+const state = {
+  language: 'Hinglish',
+  style: 'Energetic',
+  voiceGender: 'Male',
+  captionStyle: 'Hormozi',
+  cameraMotion: 'KenBurns',
+  particleShader: 'FireSparks',
+  duration: 30,
+  reel: null,
+  currentScene: 0,
+  prevScene: -1,
+  sceneStartTime: 0,
+  transitionStartTime: 0,
+  playing: false,
+  speaking: false,
+  muted: false,
+  volume: 1.0,
+  isScrubbing: false,
+  totalDurationSecs: 30,
+  currentTimeSecs: 0,
+  rate: 1.15,
+  animFrameId: null,
+  playbackTimer: null,
+  toastTimer: null,
+  sceneImages: {},
+  sceneAudios: {},
+  currentAudio: null,
+  voices: []
+};
+
+const el = (id) => document.getElementById(id);
+
+function showToast(msg) {
+  const toast = el('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+}
+
+function escapeHtml(str = '') {
+  return String(str).replace(/[&<>'"]/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#039;', '"': '&quot;'
+  })[c]);
+}
+
+// 100% PRE-LOAD OF ALL AI SCENE IMAGES AND AI AUDIO MP3s (0ms GAP BETWEEN SCENES)
+async function preloadAllSceneVisuals(scenes, onProgress) {
+  state.sceneImages = {};
+  state.sceneAudios = {};
+  let loadedCount = 0;
+  const total = scenes.length;
+
+  const createFallbackCanvasImage = (color1 = '#7c3aed', color2 = '#06050b') => {
+    const c = document.createElement('canvas');
+    c.width = 540; c.height = 960;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, 0, 960);
+    g.addColorStop(0, color1);
+    g.addColorStop(1, color2);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 540, 960);
+    const img = new Image();
+    img.src = c.toDataURL('image/jpeg');
+    return img;
+  };
+
+  // Load images SEQUENTIALLY in batches of 2 with gap — avoids Pollinations rate limiting
+  // Promise.all (all at once) was causing scenes 3-8 to fail due to Pollinations throttling
+  const loadScene = (sc, i) => new Promise((resolve) => {
+    let isResolved = false;
+    const safeDone = (imgObj) => {
+      if (isResolved) return;
+      isResolved = true;
+      clearTimeout(safetyTimer);
+      state.sceneImages[i] = imgObj;
+      loadedCount++;
+      if (onProgress) onProgress(loadedCount, total);
+      resolve();
+    };
+
+    // 35s safety timer — gives server time to try Turbo (12s) + FLUX (12s) = 24s max
+    const safetyTimer = setTimeout(() => {
+      safeDone(createFallbackCanvasImage(sc.color || '#4c1d95', '#06050b'));
+    }, 35000);
+
+    // Image — use sc.visual directly
+    const img = new Image();
+    const sceneImagePrompt = (sc.visual || '').trim()
+      || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} portrait`;
+
+    const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
+    const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneImagePrompt + ', highly detailed, masterpiece')}?width=540&height=960&nologo=true&seed=${uniqueSeed}`;
+    
+    // Use local proxy if on localhost, or direct Pollinations AI if hosted on static host
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      img.src = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}&t=${Date.now() + i}`;
+    } else {
+      img.src = directPollinationsUrl;
+    }
+
+    img.onload = () => safeDone(img);
+    img.onerror = () => safeDone(createFallbackCanvasImage(sc.color || '#2563eb', '#06050b'));
+
+    // Audio preload in parallel (TTS server handles concurrency fine)
+    const rawText = sc.spokenNarration || sc.narration || sc.onScreen || '';
+    const cleanText = cleanTtsText(rawText);
+    const lang = state.language === 'English' ? 'en' : 'hi';
+    const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.src = ttsUrl;
+    state.sceneAudios[i] = audio;
+  });
+
+  // Load ONE image at a time — no race conditions, no Pollinations throttling
+  // Gap between each image gives Pollinations time to process the previous one
+  const BATCH_DELAY_MS = 1200; // 1.2s gap between each image request
+
+  for (let i = 0; i < scenes.length; i++) {
+    await loadScene(scenes[i], i);
+    // Gap before next image (skip after last)
+    if (i < scenes.length - 1) {
+      await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+    }
+  }
+
+  renderCanvasFrame();
+}
+
+// Aspect-Ratio Preserving Canvas Cover Renderer
+function drawImageCover(ctx, img, w, h) {
+  if (!img || !img.complete || img.naturalWidth === 0) return;
+  const imgRatio = img.naturalWidth / img.naturalHeight;
+  const canvasRatio = w / h;
+  let renderW, renderH, offsetX, offsetY;
+
+  if (imgRatio > canvasRatio) {
+    renderH = h;
+    renderW = h * imgRatio;
+    offsetX = (w - renderW) / 2;
+    offsetY = 0;
+  } else {
+    renderW = w;
+    renderH = w / imgRatio;
+    offsetX = 0;
+    offsetY = (h - renderH) / 2;
+  }
+  ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
+}
+
+// PRO CANVAS VIDEO RENDERER WITH CAMERA MOTION & PARTICLE SHADERS
+function renderCanvasFrame(ts = performance.now()) {
+  const canvas = el('reelCanvas');
+  if (!canvas || !state.reel) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width; // 540
+  const h = canvas.height; // 960
+
+  const idx = state.currentScene;
+  const scenes = state.reel.scenes || [];
+  const scene = scenes[idx] || scenes[0];
+  if (!scene) return;
+
+  const bgImg = state.sceneImages[idx];
+  const sceneDurationMs = (scene.duration || 7) * 1000;
+
+  if (!state.sceneStartTime) state.sceneStartTime = ts;
+  const elapsedInScene = ts - state.sceneStartTime;
+  // Calculate effective scene duration: max of target duration and actual spoken audio duration
+  const effectiveDurationMs = Math.max(sceneDurationMs, state.currentSceneSpokenMs || 0);
+  const sceneProgress = Math.min(1.0, elapsedInScene / effectiveDurationMs);
+
+  ctx.clearRect(0, 0, w, h);
+
+  // TRANSITION SHADER ENGINE: 800ms Whip-Pan Morph & Flare Bridge
+  const transitionDuration = 800;
+  const isTransitioning = state.prevScene >= 0 && (ts - state.transitionStartTime) < transitionDuration;
+  const transitionProgress = isTransitioning ? (ts - state.transitionStartTime) / transitionDuration : 1.0;
+  const easeProgress = isTransitioning ? Math.sin((transitionProgress * Math.PI) / 2) : 1.0;
+
+  // 1. Draw Exiting Scene Image
+  if (isTransitioning && state.sceneImages[state.prevScene]) {
+    const prevImg = state.sceneImages[state.prevScene];
+    if (prevImg && prevImg.complete && prevImg.naturalWidth !== 0) {
+      ctx.save();
+      ctx.globalAlpha = 1.0 - easeProgress;
+      const prevScale = 1.0 + (transitionProgress * 0.18);
+      const prevSlideX = -transitionProgress * w * 0.45;
+
+      ctx.translate(w / 2 + prevSlideX, h / 2);
+      ctx.scale(prevScale, prevScale);
+      ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(prevImg, 0, 0, w, h);
+      ctx.restore();
+    }
+  }
+
+  // 2. Draw Entering Scene Image with Selectable Camera Motion FX
+  ctx.save();
+  if (isTransitioning) {
+    ctx.globalAlpha = easeProgress;
+    const enterScale = 0.85 + (easeProgress * 0.15);
+    const enterSlideX = (1.0 - easeProgress) * w * 0.45;
+
+    ctx.translate(w / 2 + enterSlideX, h / 2);
+    ctx.scale(enterScale, enterScale);
+    ctx.translate(-w / 2, -h / 2);
+  } else {
+    const motionMode = state.cameraMotion || 'KenBurns';
+    let zoom = 1.0;
+    let panX = 0;
+    let panY = 0;
+
+    if (motionMode === 'KenBurns') {
+      zoom = 1.0 + (sceneProgress * 0.14);
+      panX = Math.sin(sceneProgress * Math.PI) * 12;
+      panY = Math.cos(sceneProgress * Math.PI) * 8;
+    } else if (motionMode === 'PulseShake') {
+      const shake = state.playing ? Math.sin(ts * 0.05) * 4 : 0;
+      zoom = 1.05 + Math.abs(Math.sin(ts * 0.01)) * 0.06;
+      panX = shake;
+      panY = Math.cos(ts * 0.04) * 3;
+    } else if (motionMode === 'Parallax') {
+      zoom = 1.08;
+      panX = (Math.sin(ts * 0.001) * 20);
+      panY = (Math.cos(ts * 0.0012) * 15);
+    }
+
+    ctx.translate(w / 2 + panX, h / 2 + panY);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-w / 2, -h / 2);
+  }
+
+  if (bgImg && bgImg.complete && bgImg.naturalWidth !== 0) {
+    drawImageCover(ctx, bgImg, w, h);
+  } else {
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, scene.color || '#4c1d95');
+    grad.addColorStop(1, '#06050b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.restore();
+
+  // 3. Midpoint Lens Flare Flash
+  if (isTransitioning) {
+    const flareIntensity = Math.sin(transitionProgress * Math.PI);
+    if (flareIntensity > 0.05) {
+      ctx.save();
+      const flareGrad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.85);
+      flareGrad.addColorStop(0, `rgba(255, 255, 255, ${flareIntensity * 0.55})`);
+      flareGrad.addColorStop(0.4, `rgba(168, 85, 247, ${flareIntensity * 0.35})`);
+      flareGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = flareGrad;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+  }
+
+  // 4. PARTICLES SHADER OVERLAY (FireSparks, GoldDust, FilmGrain)
+  ctx.save();
+  const shaderMode = state.particleShader || 'FireSparks';
+
+  if (shaderMode === 'FireSparks') {
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.4)';
+    for (let i = 0; i < 20; i++) {
+      const px = (Math.sin(ts * 0.002 + i * 2.1) * 0.5 + 0.5) * w;
+      const py = h - ((ts * 0.12 + i * 45) % h);
+      ctx.beginPath();
+      ctx.arc(px, py, (i % 3) + 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (shaderMode === 'GoldDust') {
+    ctx.fillStyle = 'rgba(234, 179, 8, 0.35)';
+    for (let i = 0; i < 25; i++) {
+      const px = (Math.sin(ts * 0.001 + i * 1.8) * 0.5 + 0.5) * w;
+      const py = ((ts * 0.04 + i * 38) % h);
+      ctx.beginPath();
+      ctx.arc(px, py, (i % 4) + 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (shaderMode === 'FilmGrain') {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    for (let i = 0; i < 60; i++) {
+      const rx = Math.random() * w;
+      const ry = Math.random() * h;
+      ctx.fillRect(rx, ry, 2, 2);
+    }
+  }
+  ctx.restore();
+
+  // 5. Vignette Gradient
+  const vignette = ctx.createLinearGradient(0, 0, 0, h);
+  vignette.addColorStop(0, 'rgba(0, 0, 0, 0.65)');
+  vignette.addColorStop(0.25, 'rgba(0, 0, 0, 0.1)');
+  vignette.addColorStop(0.65, 'rgba(0, 0, 0, 0.25)');
+  vignette.addColorStop(1, 'rgba(0, 0, 0, 0.92)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, w, h);
+
+  // 6. Header Branding & Audio Equalizer Indicator
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.font = '800 20px "JetBrains Mono", monospace';
+  ctx.fillText('TEXT2VIDEO.AI', 32, 54);
+
+  ctx.fillStyle = state.muted ? '#6b7280' : '#f59e0b';
+  for (let i = 0; i < 5; i++) {
+    const barH = (state.playing && !state.muted) ? 6 + Math.abs(Math.sin(ts * 0.01 + i)) * 16 : 6;
+    ctx.fillRect(205 + i * 7, 54 - barH, 4, barH);
+  }
+
+  const sceneCounter = `${String(idx + 1).padStart(2, '0')} / ${String(scenes.length).padStart(2, '0')}`;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.font = '700 16px "JetBrains Mono", monospace';
+  ctx.fillText(sceneCounter, w - 100, 54);
+
+  // 7. Scene Kicker Badge
+  ctx.fillStyle = '#7c3aed';
+  ctx.beginPath();
+  ctx.roundRect(36, h - 310, 170, 32, 8);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 13px "JetBrains Mono", monospace';
+  ctx.fillText(idx === 0 ? '✦ VIRAL HOOK' : `SCENE ${idx + 1} DIRECTED`, 46, h - 289);
+
+  // 8. Spoken Dialogue Subtitle Highlighting
+  const fullText = scene.narration || scene.onScreen || '';
+  const words = fullText.split(/\s+/);
+  const totalWords = words.length;
+  const activeWordIdx = Math.min(Math.floor(sceneProgress * totalWords), totalWords - 1);
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.98)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetX = 3;
+  ctx.shadowOffsetY = 3;
+
+  ctx.font = '800 30px "Plus Jakarta Sans", "Noto Sans Devanagari", sans-serif';
+  const startX = 36;
+  let currentY = h - 250;
+  const maxLineWidth = w - 72;
+
+  let wordCount = 0;
+  let lineWords = [];
+  let lineText = '';
+
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const testLine = lineText ? `${lineText} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxLineWidth && lineText) {
+      drawPresetKaraokeLine(ctx, lineWords, wordCount - lineWords.length, activeWordIdx, startX, currentY, sceneProgress);
+      currentY += 44;
+      lineText = word;
+      lineWords = [word];
+    } else {
+      lineText = testLine;
+      lineWords.push(word);
+    }
+    wordCount++;
+  }
+  if (lineWords.length > 0) {
+    drawPresetKaraokeLine(ctx, lineWords, wordCount - lineWords.length, activeWordIdx, startX, currentY, sceneProgress);
+  }
+  ctx.restore();
+
+  // 9. Bottom Progress Bar
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.fillRect(36, h - 36, w - 72, 6);
+
+  const totalProgress = (idx + sceneProgress) / scenes.length;
+  ctx.fillStyle = '#10b981';
+  ctx.fillRect(36, h - 36, (w - 72) * totalProgress, 6);
+}
+
+// Multi-Style Subtitle Renderer with Active CapCut Word Pop Scale
+function drawPresetKaraokeLine(ctx, lineWords, startWordIndex, activeWordIndex, startX, y, sceneProgress = 0) {
+  let currentX = startX;
+  const style = state.captionStyle || 'Hormozi';
+
+  lineWords.forEach((word, i) => {
+    const globalIdx = startWordIndex + i;
+    const wordWidth = ctx.measureText(word + ' ').width;
+
+    if (globalIdx === activeWordIndex) {
+      ctx.save();
+      const bounceY = y - 4;
+      ctx.translate(currentX + wordWidth / 2, bounceY - 10);
+      ctx.scale(1.18, 1.18);
+      ctx.translate(-(currentX + wordWidth / 2), -(bounceY - 10));
+
+      if (style === 'Hormozi') {
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.roundRect(currentX - 4, bounceY - 28, wordWidth + 2, 38, 6);
+        ctx.fill();
+        ctx.fillStyle = '#000000';
+        ctx.fillText(word, currentX, bounceY);
+      } else if (style === 'MrBeast') {
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#dc2626';
+        ctx.shadowBlur = 28;
+        ctx.beginPath();
+        ctx.roundRect(currentX - 4, bounceY - 28, wordWidth + 2, 38, 6);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(word, currentX, bounceY);
+      } else if (style === 'Cyberpunk') {
+        ctx.fillStyle = '#a855f7';
+        ctx.shadowColor = '#06b6d4';
+        ctx.shadowBlur = 24;
+        ctx.beginPath();
+        ctx.roundRect(currentX - 4, bounceY - 28, wordWidth + 2, 38, 6);
+        ctx.fill();
+        ctx.fillStyle = '#06b6d4';
+        ctx.fillText(word, currentX, bounceY);
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(word, currentX, bounceY);
+      }
+
+      ctx.restore();
+    } else {
+      ctx.fillStyle = globalIdx < activeWordIndex ? '#ffffff' : 'rgba(255, 255, 255, 0.78)';
+      ctx.fillText(word, currentX, y);
+    }
+
+    currentX += wordWidth;
+  });
+
+  // Calculate Current Video Time & Update Scrubber Timeline UI
+  if (state.reel && state.reel.scenes) {
+    const scenes = state.reel.scenes;
+    const totalSecs = scenes.reduce((acc, s) => acc + (s.duration || 7), 0);
+    state.totalDurationSecs = totalSecs;
+
+    let elapsedPrior = 0;
+    for (let i = 0; i < state.currentScene; i++) {
+      elapsedPrior += (scenes[i].duration || 7);
+    }
+    const currentSceneDur = scenes[state.currentScene]?.duration || 7;
+    const currentSceneProgressSecs = (sceneProgress % 1.0) * currentSceneDur;
+    const currentTotalSecs = Math.min(totalSecs, elapsedPrior + currentSceneProgressSecs);
+    state.currentTimeSecs = currentTotalSecs;
+
+    const curMin = String(Math.floor(currentTotalSecs / 60)).padStart(2, '0');
+    const curSec = String(Math.floor(currentTotalSecs % 60)).padStart(2, '0');
+    const totMin = String(Math.floor(totalSecs / 60)).padStart(2, '0');
+    const totSec = String(Math.floor(totalSecs % 60)).padStart(2, '0');
+
+    if (el('currentTimeDisplay')) el('currentTimeDisplay').textContent = `${curMin}:${curSec}`;
+    if (el('totalTimeDisplay')) el('totalTimeDisplay').textContent = `${totMin}:${totSec}`;
+    if (el('playerScrubber') && !state.isScrubbing) {
+      el('playerScrubber').value = totalSecs > 0 ? (currentTotalSecs / totalSecs) * 100 : 0;
+    }
+  }
+}
+
+function startCanvasLoop() {
+  function loop(ts) {
+    renderCanvasFrame(ts);
+    state.animFrameId = requestAnimationFrame(loop);
+  }
+  cancelAnimationFrame(state.animFrameId);
+  state.animFrameId = requestAnimationFrame(loop);
+}
+
+function changeScene(newIndex) {
+  if (state.currentScene === newIndex) return;
+  state.prevScene = state.currentScene;
+  state.currentScene = newIndex;
+  const now = performance.now();
+  state.sceneStartTime = now;       // reset progress bar & Ken Burns
+  state.transitionStartTime = now;  // start 800ms whip-pan transition
+  renderWorkspace();
+}
+
+// Auto-detect optimal visual theme, subtitle style, camera motion, and particle shaders based on user prompt
+function autoDetectPromptStyles(prompt) {
+  const p = String(prompt || '').toLowerCase();
+
+  if (/(naruto|anime|goku|dragonball|aot|dbz|gaming|bgmi|ninja|fight|action|power)/i.test(p)) {
+    state.style = 'Energetic';
+    state.captionStyle = 'Hormozi';
+    state.cameraMotion = 'PulseShake';
+    state.particleShader = 'FireSparks';
+  } else if (/(hanuman|bhakti|god|ram|peace|meditation|nature|sunset|relax|spiritual|child|story|ghibli)/i.test(p)) {
+    state.style = 'Peaceful';
+    state.captionStyle = 'Minimal';
+    state.cameraMotion = 'KenBurns';
+    state.particleShader = 'GoldDust';
+  } else {
+    state.style = 'Cinematic';
+    state.captionStyle = 'MrBeast';
+    state.cameraMotion = 'Parallax';
+    state.particleShader = 'FilmGrain';
+  }
+}
+
+// Standalone Client AI Script Generator (Guarantees zero-crash script generation on static Firebase Hosting)
+async function generateScriptClientSide(promptText, duration, language, voiceGender) {
+  const targetDuration = Number(duration) || 30;
+  const sceneCount = targetDuration <= 15 ? 3 : targetDuration <= 30 ? 4 : targetDuration <= 45 ? 6 : 8;
+  const sceneDuration = Number((targetDuration / sceneCount).toFixed(1));
+
+  try {
+    const sysInstruction = `Output strict JSON video script matching user prompt: "${promptText}". Schema: {"title":"Title","subjectCharacter":"Character","targetDuration":${targetDuration},"hook":"Viral Hook","caption":"Caption #reels","hashtags":["#reels","#viral"],"scenes":[{"sceneNumber":1,"visual":"Visual prompt for AI image","narration":"Hinglish spoken text","spokenNarration":"Hindi spoken text","onScreen":"Scene 01","duration":${sceneDuration}}]}`;
+    const pollRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(sysInstruction)}?json=true`);
+    if (pollRes.ok) {
+      const txt = await pollRes.text();
+      // Ensure response doesn't start with HTML tags
+      if (!txt.trim().startsWith('<')) {
+        const match = txt.match(/\{[\s\S]*\}/);
+        if (match) {
+          try {
+            const parsed = JSON.parse(match[0]);
+            if (parsed && Array.isArray(parsed.scenes) && parsed.scenes.length > 0) return parsed;
+          } catch (jsonErr) {
+            console.warn('JSON parse error from remote AI text:', jsonErr.message);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Client Pollinations script AI error:', e.message);
+  }
+
+  // Smart Client Concept Intelligence Engine
+  const p = String(promptText || '').toLowerCase();
+  
+  if (/(hacker|cyberpunk|coding|code|computer|matrix|tech)/i.test(p)) {
+    return {
+      title: 'Neon Cyberpunk: Cyber Attack',
+      subjectCharacter: 'Cyberpunk Hacker',
+      targetDuration,
+      hook: 'Neon lights ke pichhe ek aisa hacker baitha hai jo poore shehar ke system ko hack kar sakta hai!',
+      caption: '💻 Neon Cyberpunk Hacker Vibes! #Cyberpunk #Hacker #Coding #Reels #AI',
+      hashtags: ['#cyberpunk', '#hacker', '#coding', '#reels', '#viral'],
+      scenes: [
+        { sceneNumber: 1, visual: 'Cyberpunk hacker typing furiously on glowing neon holographic keyboard inside dark apartment with rain hitting window photorealistic 8k', narration: 'Baarish ki boondon ke beech, neon lights ki chhaon mein ek hacker apna sabse bada code likh raha hai', spokenNarration: 'बारिश की बूंदों के बीच, नियॉन लाइट्स की छांव में एक हैकर अपना सबसे बड़ा कोड लिख रहा है', onScreen: 'Scene 01 • Cyberpunk Hacker', color: '#7c3aed', duration: sceneDuration },
+        { sceneNumber: 2, visual: 'Close up of hacker eyes reflecting green matrix code scrolling fast across glowing multi-monitor screens dramatic lighting 8k', narration: 'Har ek line ka code... ek naya darwaza kholta hai digital duniya ke sabse bade raaz tak', spokenNarration: 'हर एक लाइन का कोड... एक नया दरवाज़ा खोलता है डिजिटल दुनिया के सबसे बड़े राज़ तक', onScreen: 'Scene 02 • Mainframe Hack', color: '#059669', duration: sceneDuration },
+        { sceneNumber: 3, visual: 'Over the shoulder view of hacker watching encrypted security firewalls breach in glowing neon red and cyan 8k', narration: 'Jab poori duniya so rahi hoti hai, tab yeh digital ghost shehar ke mainframe par raj karta hai', spokenNarration: 'जब पूरी दुनिया सो रही होती है, तब यह डिजिटल घोस्ट शहर के मेनफ्रेम पर राज करता है', onScreen: 'Scene 03 • Firewall Breach', color: '#dc2626', duration: sceneDuration },
+        { sceneNumber: 4, visual: 'Hacker standing up looking out rainy apartment window over glowing cyberpunk metropolis skyline holding glowing memory drive 8k', narration: 'Mission complete. Ek naya cyberpunk avatar ab hamesha ke liye digital matrix mein amar ho gaya', spokenNarration: 'मिशन कम्पलीट. एक नया साइबरपंक अवतार अब हमेशा के लिए डिजिटल मैट्रिक्स में अमर हो गया', onScreen: 'Scene 04 • System Access', color: '#2563eb', duration: sceneDuration }
+      ]
+    };
+  }
+
+  if (/(gym|fat loss|weight loss|fitness|workout|muscle|diet)/i.test(p)) {
+    return {
+      title: 'Fitness Myth: Fat Loss vs Weight Loss',
+      subjectCharacter: 'Gym Athlete',
+      targetDuration,
+      hook: 'Kya aapko pata hai Fat Loss aur Weight Loss mein zameen aasmaan ka farak hai?',
+      caption: '💪 Gym Fitness Myths Busted! Fat Loss vs Weight Loss #Fitness #Gym #Reels #Health',
+      hashtags: ['#gym', '#fitness', '#fatloss', '#reels', '#viral'],
+      scenes: [
+        { sceneNumber: 1, visual: 'Fit gym athlete standing on weighing scale looking confused in modern aesthetic gym with neon dumbbells photorealistic 8k', narration: 'Weight Loss mein aapka pani, muscle aur fat teeno kam hota hai, jo aapki body ko kamzor karta hai', spokenNarration: 'वेट लॉस में आपका पानी, मसल और फैट तीनों कम होता है, जो आपकी बॉडी को कमजोर करता है', onScreen: 'Scene 01 • Weight Loss Myth', color: '#ea580c', duration: sceneDuration },
+        { sceneNumber: 2, visual: 'Muscular athlete lifting heavy barbell squats in intense gym lighting with sweat droplets glowing photorealistic 8k', narration: 'Lekin Fat Loss mein aap sirf body fat ghataate ho aur lean muscle mass ko maintain rakhte ho', spokenNarration: 'लेकिन फैट लॉस में आप सिर्फ बॉडी फैट घटाते हो और लीन मसल मास को मेंटेन रखते हो', onScreen: 'Scene 02 • True Fat Loss', color: '#2563eb', duration: sceneDuration },
+        { sceneNumber: 3, visual: 'Close up of healthy high protein meal prep with eggs chicken avocado and measuring tape in clean kitchen 8k', narration: 'Sahi protein diet aur strength training se aapka metabolism tez hota hai aur fat jaldi burn hota hai', spokenNarration: 'सही प्रोटीन डाइट और स्ट्रेंथ ट्रेनिंग से आपका मेटाबॉलिज्म तेज़ होता है और फैट जल्दी बर्न होता है', onScreen: 'Scene 03 • Nutrition & Diet', color: '#059669', duration: sceneDuration },
+        { sceneNumber: 4, visual: 'Athletic bodybuilder flexing abs in front of gym mirror with intense motivational lighting 8k', narration: 'Isiliye scale par vajan mat dekho, aaina aur body shape batayega aapki asli progress!', spokenNarration: 'इसलिए स्केल पर वजन मत देखो, आइना और बॉडी शेप बताएगा आपकी असली प्रोग्रेस!', onScreen: 'Scene 04 • Real Transformation', color: '#7c3aed', duration: sceneDuration }
+      ]
+    };
+  }
+
+  if (/(astronaut|space|earth|satellite|mars|cosmos|galaxy|universe)/i.test(p)) {
+    return {
+      title: 'Deep Space: Earth & Cosmos',
+      subjectCharacter: 'Astronaut',
+      targetDuration,
+      hook: 'Gehre antariksh se jab Dharti ko dekhoge, tab samajh aayega ki hum kitne chhote hain!',
+      caption: '🚀 Deep Space IMAX Visuals! #Space #Astronaut #NASA #Cosmos #Reels',
+      hashtags: ['#space', '#astronaut', '#earth', '#reels', '#viral'],
+      scenes: [
+        { sceneNumber: 1, visual: 'Lone astronaut floating in deep dark space gazing at glowing vibrant Earth with orbiting satellites IMAX 8k', narration: 'Gehre antariksh ki khamoshi mein, hamari neeli Dharti ek heere ki tarah chamakti hai', spokenNarration: 'गहरे अंतरिक्ष की खामोशी में, हमारी नीली धरती एक हीरे की तरह चमकती है', onScreen: 'Scene 01 • Deep Space', color: '#2563eb', duration: sceneDuration },
+        { sceneNumber: 2, visual: 'Close up astronaut helmet visor reflecting glowing Earth and thousand orbiting satellite networks 8k', narration: 'Hazaaron satellites aur roshni ke taar humein is vishal brahmand se jode rakhte hain', spokenNarration: 'हज़ारों सैटेलाइट्स और रोशनी के तार हमें इस विशाल ब्रह्मांड से जोड़े रखते हैं', onScreen: 'Scene 02 • Earth Orbit', color: '#059669', duration: sceneDuration },
+        { sceneNumber: 3, visual: 'Astronaut walking on dusty red Mars surface during dramatic golden sunset cinematic 8k', narration: 'Ek naye grah par pehla kadam... bhavishya ki nayi khoj aur umeedon ka safar', spokenNarration: 'एक नए ग्रह पर पहला कदम... भविष्य की नई खोज और उम्मीदों का सफर', onScreen: 'Scene 03 • Mars Horizon', color: '#ea580c', duration: sceneDuration },
+        { sceneNumber: 4, visual: 'Astronaut looking back at distant Earth glowing blue in starry deep space galaxy background 8k', narration: 'Yeh sirf ek yatra nahi hai, yeh insaniat ke sapno ki sabse badi jeet hai', spokenNarration: 'यह सिर्फ एक यात्रा नहीं है, यह इंसानियत के सपनों की सबसे बड़ी जीत है', onScreen: 'Scene 04 • Infinite Cosmos', color: '#7c3aed', duration: sceneDuration }
+      ]
+    };
+  }
+
+  let title = 'Cinematic Story: ' + promptText.slice(0, 35);
+  let subjectChar = 'Protagonist';
+  let hook = 'Scroll rokkar dhyan se suno — ek aisi kahani jo aapne pehle kabhi nahi dekhi!';
+  let caption = '🔥 ' + promptText + ' #Reels #Viral #AIVideo';
+  let hashtags = ['#viral', '#reels', '#ai', '#cinematic'];
+
+  const scenes = [];
+  for (let i = 0; i < sceneCount; i++) {
+    scenes.push({
+      sceneNumber: i + 1,
+      visual: `${promptText}, scene ${i + 1}, cinematic shot, photorealistic 8k, volumetric lighting`,
+      narration: `Scene ${i + 1}: ${promptText} - Ek anokha safar aur adbhut drishti`,
+      spokenNarration: `दृश्य ${i + 1}: ${promptText} - एक अनोखा सफर और अद्भुत दृष्टि`,
+      onScreen: `Scene 0${i + 1} • ReelShorts AI`,
+      color: ['#ea580c', '#2563eb', '#7c3aed', '#dc2626', '#059669', '#d97706'][i % 6],
+      duration: sceneDuration
+    });
+  }
+
+  return { title, subjectCharacter: subjectChar, targetDuration, hook, caption, hashtags, scenes };
+}
+
+// Generate Video Script & Preload Scenes with 100% Gate
+async function generateVideo() {
+  const promptInput = el('promptInput');
+  const prompt = promptInput.value.trim();
+
+  if (!prompt) {
+    promptInput.focus();
+    showToast('Prompt is required.');
+    return;
+  }
+
+  // Always read current live selection values from form controls
+  state.voiceGender = el('voiceGenderSelect')?.value || state.voiceGender || 'Male';
+  state.language = el('languageSelect')?.value || state.language || 'Hinglish';
+
+  // Auto-detect best visual theme, captions, camera motion & shaders
+  autoDetectPromptStyles(prompt);
+
+  const btn = el('generateVideoBtn');
+  btn.disabled = true;
+  btn.querySelector('span:first-child').textContent = `✍️ AI Director Writing Script & Scenes…`;
+
+  // Reveal workspace & show ReelShorts canvas loading spinner overlay
+  el('studioWorkspace').hidden = false;
+  const overlay = el('canvasLoadingOverlay');
+  const overlayText = el('canvasLoadingText');
+  const progressFill = el('canvasProgressFill');
+
+  if (overlay) {
+    overlay.hidden = false;
+    overlay.style.display = 'flex';
+  }
+  if (overlayText) overlayText.textContent = `✨ AI Director Analyzing Concept & Writing Scenes…`;
+  if (progressFill) progressFill.style.width = `15%`;
+
+  try {
+    let resultData = null;
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          duration: state.duration,
+          language: state.language,
+          style: state.style,
+          voiceGender: state.voiceGender
+        })
+      });
+      const ct = res.headers.get('content-type') || '';
+      if (res.ok && ct.includes('json')) {
+        const jsonRes = await res.json();
+        resultData = jsonRes.data;
+      }
+    } catch (apiErr) {
+      console.warn('Backend API unavailable, using client AI engine:', apiErr.message);
+    }
+
+    // Client-Side Standalone AI Engine (Guaranteed fallback for Static Firebase Hosting)
+    if (!resultData) {
+      resultData = await generateScriptClientSide(prompt, state.duration, state.language, state.voiceGender);
+    }
+
+    state.reel = resultData;
+    state.currentScene = 0;
+    state.prevScene = -1;
+
+    if (overlayText) overlayText.textContent = `🎨 Generating HD Scene Artwork (0/${state.reel.scenes?.length || 0})… Please wait`;
+    if (progressFill) progressFill.style.width = `35%`;
+
+    // Wait 100% until all scene visuals are loaded BEFORE rendering workspace or playing audio
+    await preloadAllSceneVisuals(state.reel.scenes || [], (loaded, total) => {
+      const pct = Math.round(35 + (loaded / total) * 65);
+      if (overlayText) overlayText.textContent = `🎨 Generating HD Scene Artwork (Scene ${loaded} of ${total})… Please wait`;
+      if (progressFill) progressFill.style.width = `${pct}%`;
+    });
+
+    renderWorkspace();
+
+    if (overlayText) overlayText.textContent = `🎬 All HD Scenes Ready! Launching Studio Player…`;
+    if (progressFill) progressFill.style.width = `100%`;
+
+    // 100% HIDE LOADING OVERLAY BEFORE VOICE & VIDEO START PLAYING
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.style.display = 'none';
+    }
+
+    state.sceneStartTime = performance.now();
+    startAutoPlayback();
+
+    showToast(`▶ 100% ReelShorts AI Scenes Preloaded! Video Playing!`);
+  } catch (err) {
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.style.display = 'none';
+    }
+    showToast(err.message || 'Generation error');
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('span:first-child').textContent = 'Generate Video & Script';
+  }
+}
+
+// Start Auto Playback
+function startAutoPlayback() {
+  stopPlayback();
+  const overlay = el('canvasLoadingOverlay');
+  if (overlay) {
+    overlay.hidden = true;
+    overlay.style.display = 'none';
+  }
+
+  state.playing = true;
+  state.sceneStartTime = performance.now();
+  state.transitionStartTime = 0;
+  if (el('playPauseBtn')) el('playPauseBtn').textContent = '❚❚';
+
+  startCanvasLoop();
+
+  if (!state.muted) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.resume();
+    }
+    playStudioNaturalVoice(state.currentScene);
+  }
+}
+
+// Render Workspace
+function renderWorkspace() {
+  if (!state.reel) return;
+  const reel = state.reel;
+
+  const totalSecs = (reel.scenes || []).reduce((acc, sc) => acc + (sc.duration || 7), 0);
+  el('videoTitleLabel').textContent = reel.title || 'Generated Reel';
+  el('videoDurationLabel').textContent = `${Math.round(totalSecs)}s Vertical HD`;
+  el('totalDurationBadge').textContent = `Total Target Duration: ${reel.targetDuration || state.duration} Seconds (${reel.scenes?.length || 0} scenes)`;
+
+  el('scriptTitle').textContent = reel.title || 'Reel Script';
+  el('scriptHook').textContent = reel.hook || (reel.scenes?.[0]?.onScreen) || '--';
+
+  const timeline = el('scenesTimeline');
+  timeline.innerHTML = (reel.scenes || []).map((sc, i) => `
+    <div class="scene-item-row ${state.currentScene === i ? 'active' : ''}" data-idx="${i}">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong style="color:var(--accent);">Scene ${String(i + 1).padStart(2, '0')} (${sc.duration || 7}s Dialogue):</strong>
+        <span style="font-size:11px; opacity:0.7; background:rgba(255,255,255,0.1); padding:2px 8px; border-radius:10px;">${sc.onScreen || 'Badge'}</span>
+      </div>
+      <div style="font-size:13px; font-weight:700; color:#fff; margin-top:6px;">"${escapeHtml(sc.narration)}"</div>
+      <div style="font-size:11px; color:#a78bfa; margin-top:5px; line-height:1.3;">🎨 Visual: ${escapeHtml(sc.visual || '')}</div>
+    </div>
+  `).join('');
+
+  document.querySelectorAll('.scene-item-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      changeScene(Number(row.dataset.idx));
+      if (!state.muted) playStudioNaturalVoice(state.currentScene);
+    });
+  });
+
+  el('scriptCaption').textContent = reel.caption || '';
+  el('scriptHashtags').textContent = (reel.hashtags || []).join(' ');
+  if (el('jsonOutput')) el('jsonOutput').textContent = JSON.stringify(reel, null, 2);
+
+  startCanvasLoop();
+}
+
+// Controlled Playback Loop
+function togglePlayback() {
+  if (!state.reel) return;
+
+  if (state.playing) {
+    stopPlayback();
+  } else {
+    const scenes = state.reel.scenes || [];
+    if (state.currentScene >= scenes.length - 1) {
+      changeScene(0);
+    }
+    startAutoPlayback();
+  }
+}
+
+function stopPlayback() {
+  clearTimeout(state.playbackTimer);
+  state.playbackTimer = null;
+  state.playing = false;
+  stopAllAudio();
+  el('playPauseBtn').textContent = '▶';
+}
+
+function stopAllAudio() {
+  if (state.currentAudio) {
+    state.currentAudio.pause();
+    state.currentAudio.currentTime = 0;
+    state.currentAudio = null;
+  }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
+  state.speaking = false;
+}
+
+function cleanTtsText(rawText) {
+  return String(rawText || '')
+    .replace(/#\w+/g, '')
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}]/gu, '')
+    .replace(/[()[\]{}]/g, '')
+    .replace(/\bAI\b/gi, 'ए आई')
+    .replace(/\bVS\b/gi, 'वर्सेस')
+    .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ─── NATURAL INDIAN VOICE SELECTION ENGINE ─────────────────────────────────────
+// Selects authentic Indian/Hindi voices to ensure 100% natural pronunciation
+// without robotic western accents or distorted pitch formants.
+function getBestVoiceForLanguage(voices, gender, language, text) {
+  if (!voices || voices.length === 0) return null;
+
+  const isHindiText = language === 'Hindi' || language === 'Hinglish' || /[\u0900-\u097F]/.test(text);
+
+  if (isHindiText) {
+    if (gender === 'Male') {
+      // Male Indian Hindi voice: EXCLUDE female voices (Google हिन्दी, Kalpana, Heera, Zira)
+      return voices.find(v => (v.lang.includes('hi') || v.lang.includes('IN')) && /Hemant|Ravi|Madhur|Prabhat|Male|Guy|David|Mark/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google/i.test(v.name))
+          || voices.find(v => (v.lang.includes('hi') || v.lang.includes('IN')) && !/Female|Kalpana|Heera|Zira|Google/i.test(v.name))
+          || voices.find(v => /Male|Guy|David|Mark|George/i.test(v.name))
+          || voices[0];
+    } else {
+      // Female Indian Hindi voice (Google हिन्दी, Microsoft Kalpana, Microsoft Heera)
+      return voices.find(v => (v.lang.includes('hi') || v.name.includes('हिन्दी') || v.name.includes('Hindi')) && !/Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name))
+          || voices.find(v => v.lang.includes('IN') && !/Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name))
+          || voices.find(v => /Female|Zira|Hazel|Susan/i.test(v.name))
+          || voices[0];
+    }
+  } else {
+    // English language
+    if (gender === 'Male') {
+      return voices.find(v => /Male|Guy|David|Mark|George|Ravi|Hemant|Madhur|Prabhat/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google/i.test(v.name)) || voices[0];
+    } else {
+      return voices.find(v => /Female|Zira|Kalpana|Google|Hazel|Susan|Neerja|Swara/i.test(v.name)) || voices[0];
+    }
+  }
+}
+
+// ─── 100% FREE SEAMLESS AI VOICE & AUDIO CONTINUATION ENGINE (0ms GAP) ─────────
+function playStudioNaturalVoice(startSceneIdx) {
+  if (state.muted) return;
+  if (!state.reel || !state.reel.scenes) return;
+
+  stopAllAudio();
+
+  const scenes = state.reel.scenes;
+  const total = scenes.length;
+
+  let currentIdx = startSceneIdx;
+
+  function speakScene(sceneIdx) {
+    if (!state.playing || state.muted) return;
+    const scene = scenes[sceneIdx];
+    if (!scene) return;
+
+    const rawText = scene.spokenNarration || scene.narration || scene.onScreen || '';
+    const cleanText = cleanTtsText(rawText);
+    if (!cleanText) {
+      advanceNext();
+      return;
+    }
+
+    const isLastScene = (sceneIdx === scenes.length - 1);
+
+    const handleEnded = () => {
+      state.speaking = false;
+      if (!state.playing || state.muted) return;
+
+      if (isLastScene) {
+        setTimeout(() => {
+          stopPlayback();
+          changeScene(0);
+          showToast('🎬 Video complete! Click ▶ to play again.');
+        }, 300);
+      } else {
+        currentIdx = sceneIdx + 1;
+        changeScene(currentIdx);
+        speakScene(currentIdx);
+      }
+    };
+
+    const speakWebSpeechFallback = () => {
+      const voices = state.voices.length > 0 ? state.voices : window.speechSynthesis.getVoices();
+      const voice = getBestVoiceForLanguage(voices, state.voiceGender, state.language, cleanText);
+      const utt = new SpeechSynthesisUtterance(cleanText);
+      utt.rate = 1.0;
+      utt.pitch = state.voiceGender === 'Male' ? 0.9 : 1.1;
+      if (voice) utt.voice = voice;
+
+      utt.onstart = () => {
+        state.speaking = true;
+        if (state.currentScene !== sceneIdx) changeScene(sceneIdx);
+      };
+      utt.onend = handleEnded;
+      utt.onerror = handleEnded;
+
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utt);
+    };
+
+    // If running on static host (Firebase), use WebSpeech Synthesis directly
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      speakWebSpeechFallback();
+      return;
+    }
+
+    let audio = state.sceneAudios[sceneIdx];
+    if (!audio) {
+      const lang = state.language === 'English' ? 'en' : 'hi';
+      const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
+      audio = new Audio(ttsUrl);
+      state.sceneAudios[sceneIdx] = audio;
+    }
+
+    audio.volume = state.volume;
+    audio.currentTime = 0;
+    state.currentAudio = audio;
+
+    audio.onplay = () => {
+      state.speaking = true;
+      if (state.currentScene !== sceneIdx) changeScene(sceneIdx);
+    };
+
+    audio.onended = handleEnded;
+    audio.onerror = speakWebSpeechFallback;
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => speakWebSpeechFallback());
+    }
+  }
+
+  function advanceNext() {
+    if (currentIdx < total - 1) {
+      currentIdx++;
+      changeScene(currentIdx);
+      speakScene(currentIdx);
+    } else {
+      stopPlayback();
+      changeScene(0);
+    }
+  }
+
+  speakScene(startSceneIdx);
+}
+
+// WebM Video Exporter
+async function exportWebMVideo() {
+  if (!state.reel || !window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+    showToast('WebM Video Exporter needs Chrome/Firefox/Edge browser.');
+    return;
+  }
+
+  const btn = el('exportVideoBtn');
+  btn.disabled = true;
+  btn.querySelector('span:first-child').textContent = 'Rendering HD Video with Audio Narration…';
+
+  const canvas = el('reelCanvas');
+  const stream = canvas.captureStream(30);
+  const recorder = new MediaRecorder(stream, {
+    mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm',
+    videoBitsPerSecond: 4_000_000
+  });
+
+  const chunks = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+
+  const finished = new Promise((res) => { recorder.onstop = res; });
+  recorder.start();
+
+  const originalScene = state.currentScene;
+  const scenes = state.reel.scenes || [];
+
+  for (let i = 0; i < scenes.length; i++) {
+    changeScene(i);
+    playStudioNaturalVoice(i);
+    const sceneDurMs = ((scenes[i].duration || 7) * 1000) + 200;
+    await new Promise((r) => setTimeout(r, sceneDurMs));
+  }
+
+  recorder.stop();
+  await finished;
+
+  changeScene(originalScene);
+
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  const filename = `${(state.reel.title || 'reel').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.webm`;
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  btn.disabled = false;
+  btn.querySelector('span:first-child').textContent = '⚡ EXPORT WEBM VIDEO (.webm)';
+  showToast('🎉 HD Video downloaded!');
+}
+
+function initApp() {
+  state.duration = 30;
+
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      state.voices = window.speechSynthesis.getVoices();
+    };
+    state.voices = window.speechSynthesis.getVoices();
+  }
+
+  const durationPills = el('durationPills');
+  if (durationPills) {
+    durationPills.querySelectorAll('button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        durationPills.querySelectorAll('button').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.duration = Number(btn.dataset.duration);
+        showToast(`Target duration set to ${state.duration} seconds`);
+      });
+    });
+  }
+
+  el('languageSelect')?.addEventListener('change', (e) => { state.language = e.target.value; });
+
+  const voiceGenderSelect = el('voiceGenderSelect');
+  if (voiceGenderSelect) {
+    voiceGenderSelect.addEventListener('change', (e) => {
+      state.voiceGender = e.target.value;
+      showToast(`Voice gender set to ${state.voiceGender}`);
+      if (state.reel && !state.muted) {
+        stopAllAudio();
+        playStudioNaturalVoice(state.currentScene);
+      }
+    });
+  }
+
+  const styleSelect = el('styleSelect');
+  if (styleSelect) {
+    styleSelect.addEventListener('change', (e) => { state.style = e.target.value; });
+  }
+
+  const promptInput = el('promptInput');
+  if (promptInput) {
+    promptInput.addEventListener('input', () => {
+      const charSpan = el('promptCharCount');
+      if (charSpan) charSpan.textContent = `${promptInput.value.length} chars`;
+    });
+
+    promptInput.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        generateVideo();
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-prompt]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (promptInput) {
+        promptInput.value = btn.dataset.prompt;
+        promptInput.dispatchEvent(new Event('input'));
+        promptInput.focus();
+      }
+    });
+  });
+
+  // Ensure WebSpeech Audio is unlocked on first user interaction
+  const unlockAudio = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.resume();
+    }
+  };
+  document.addEventListener('click', unlockAudio, { once: true });
+  document.addEventListener('touchstart', unlockAudio, { once: true });
+
+  el('generateVideoBtn')?.addEventListener('click', () => {
+    unlockAudio();
+    generateVideo();
+  });
+  el('playPauseBtn')?.addEventListener('click', () => {
+    unlockAudio();
+    togglePlayback();
+  });
+
+  const muteBtn = el('muteBtn');
+  if (muteBtn) {
+    muteBtn.addEventListener('click', () => {
+      state.muted = !state.muted;
+      if (state.muted) {
+        stopAllAudio();
+        muteBtn.textContent = '🔇';
+        muteBtn.style.opacity = '0.6';
+        if (el('volumeSlider')) el('volumeSlider').value = 0;
+        showToast('Voice narration muted');
+      } else {
+        muteBtn.textContent = '🔊';
+        muteBtn.style.opacity = '1.0';
+        if (el('volumeSlider')) el('volumeSlider').value = state.volume || 1.0;
+        showToast('Voice narration enabled');
+        if (state.playing || state.reel) playStudioNaturalVoice(state.currentScene);
+      }
+    });
+  }
+
+  const scrubber = el('playerScrubber');
+  if (scrubber) {
+    scrubber.addEventListener('input', () => {
+      state.isScrubbing = true;
+    });
+    scrubber.addEventListener('change', () => {
+      state.isScrubbing = false;
+      if (!state.reel || !state.reel.scenes) return;
+      const pct = parseFloat(scrubber.value) / 100;
+      const targetSecs = pct * (state.totalDurationSecs || 30);
+
+      let acc = 0;
+      let targetIdx = 0;
+      for (let i = 0; i < state.reel.scenes.length; i++) {
+        const d = state.reel.scenes[i].duration || 7;
+        if (acc + d >= targetSecs) {
+          targetIdx = i;
+          break;
+        }
+        acc += d;
+      }
+      changeScene(targetIdx);
+      if (state.playing && !state.muted) {
+        playStudioNaturalVoice(targetIdx);
+      }
+    });
+  }
+
+  const volSlider = el('volumeSlider');
+  if (volSlider) {
+    volSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      state.volume = val;
+      if (state.currentAudio) state.currentAudio.volume = val;
+      if (val === 0) {
+        state.muted = true;
+        if (el('muteBtn')) el('muteBtn').textContent = '🔇';
+      } else {
+        state.muted = false;
+        if (el('muteBtn')) el('muteBtn').textContent = '🔊';
+      }
+    });
+  }
+
+  const fsBtn = el('fullscreenBtn');
+  if (fsBtn) {
+    fsBtn.addEventListener('click', () => {
+      const frame = document.querySelector('.phone-frame');
+      if (!document.fullscreenElement) {
+        frame?.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+  }
+
+  el('exportVideoBtn')?.addEventListener('click', exportWebMVideo);
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.tab;
+      if (!target) return;
+
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
+
+      btn.classList.add('active');
+      const tabEl = el(`tab${target.charAt(0).toUpperCase() + target.slice(1)}`);
+      if (tabEl) tabEl.classList.add('active');
+    });
+  });
+
+  el('copyScriptBtn')?.addEventListener('click', () => {
+    if (!state.reel) return;
+    const r = state.reel;
+    let fullScript = `🎬 TITLE: ${r.title}\n\n📍 HOOK:\n${r.hook}\n\n📄 SCENE DIALOGUES:\n`;
+    (r.scenes || []).forEach((sc, i) => {
+      fullScript += `Scene ${i + 1} (${sc.duration || 7}s): "${sc.narration}"\n`;
+    });
+    fullScript += `\n💬 CAPTION:\n${r.caption}\n\n${(r.hashtags || []).join(' ')}`;
+
+    navigator.clipboard.writeText(fullScript).then(() => showToast('📋 Full Production Script Copied!'));
+  });
+
+  el('copyJsonBtn')?.addEventListener('click', () => {
+    const jsonOutput = el('jsonOutput');
+    if (jsonOutput) {
+      navigator.clipboard.writeText(jsonOutput.textContent).then(() => showToast('JSON copied!'));
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initApp);

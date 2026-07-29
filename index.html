@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Text2Video AI Studio — Free AI powered by Groq Llama 3.3 70B + Gemini 2.5 Flash. Create cinematic reels instantly." />
+  <title>Text2Video AI Studio — Groq + Gemini Free Video Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Firebase App & Analytics SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC1OUhivPHRCDycAZsfZTXT7M4N6kN59H0",
+      authDomain: "text2video-e88fc.firebaseapp.com",
+      projectId: "text2video-e88fc",
+      storageBucket: "text2video-e88fc.firebasestorage.app",
+      messagingSenderId: "399847821211",
+      appId: "1:399847821211:web:1640bb15d6a01cb6c79b3e",
+      measurementId: "G-GKMC9GQTQZ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+  </script>
+</head>
+
+<body>
+  <div class="bg-glow"></div>
+  <div class="grain"></div>
+
+  <header class="header">
+    <div class="header-brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <h1>Text2Video AI Studio</h1>
+      </div>
+    </div>
+  </header>
+
+  <main class="studio-container">
+    <!-- LEFT PANEL: TIMING & MODEL KEYS -->
+    <aside class="sidebar">
+      <div class="panel-header">
+        <h2>⏱️ Video Settings</h2>
+      </div>
+
+      <div class="form-group">
+        <label>Target Video Duration</label>
+        <div class="pill-selector" id="durationPills">
+          <button type="button" data-duration="15">15s (Snappy)</button>
+          <button type="button" class="active" data-duration="30">30s (Reel)</button>
+          <button type="button" data-duration="45">45s (Story)</button>
+          <button type="button" data-duration="60">60s (Long)</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="languageSelect">Video Language</label>
+        <select id="languageSelect" class="form-control">
+          <option value="Hinglish">Hinglish (Hindi + English)</option>
+          <option value="Hindi">Hindi (हिंदी)</option>
+          <option value="English">English</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="voiceGenderSelect">🎙️ Voice & Character Gender</label>
+        <select id="voiceGenderSelect" class="form-control">
+          <option value="Male" selected>♂️ Male Heroic (Deep Indian Creator Voice)</option>
+          <option value="Female">♀️ Female Energetic (Viral Reel Host Voice)</option>
+        </select>
+      </div>
+    </aside>
+
+    <!-- MAIN PLAYGROUND & VIDEO PLAYER -->
+    <section class="main-content">
+      <!-- PROMPT INPUT BOX -->
+      <div class="prompt-box">
+        <div class="prompt-header">
+          <label for="promptInput">💬 Text-to-Video Prompt</label>
+          <div class="preset-chips">
+            <span>Quick Ideas:</span>
+            <button type="button" data-prompt="Naruto pe ek energetic reel banao">🍥 Naruto Anime</button>
+            <button type="button" data-prompt="Gym fat loss vs weight loss 30 second reel">💪 Gym Myth</button>
+            <button type="button" data-prompt="Ek motivational reel banao consistency ke upar">🔥 Motivation</button>
+            <button type="button" data-prompt="Hanuman ji ki bhakti aur shanti par 30 second reel">🙏 Bhakti</button>
+          </div>
+        </div>
+
+        <textarea id="promptInput" rows="3"
+          placeholder="Example: Naruto pe ek energetic 30-second reel banao"></textarea>
+
+        <div class="prompt-footer">
+          <span class="token-estimate" id="promptCharCount">0 chars</span>
+          <button type="button" id="generateVideoBtn" class="run-btn">
+            <span>Generate Video & Script</span>
+            <span class="btn-icon">⚡</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- VIDEO STUDIO WORKSPACE -->
+      <div class="studio-workspace" id="studioWorkspace" hidden>
+        <div class="workspace-grid">
+          <!-- 9:16 HD VERTICAL VIDEO PLAYER -->
+          <div class="player-column">
+            <div class="player-meta">
+              <span id="videoTitleLabel">Generated Reel</span>
+              <span class="aspect-badge" id="videoDurationLabel">30s Vertical HD</span>
+            </div>
+
+            <div class="phone-frame">
+              <canvas id="reelCanvas" width="540" height="960"></canvas>
+
+              <!-- REELSHORTS SLEEK CANVAS SCENE LOADING OVERLAY -->
+              <div class="canvas-loading-overlay" id="canvasLoadingOverlay" hidden>
+                <div class="spinner-ring"></div>
+                <div class="loading-status-text" id="canvasLoadingText">🎨 Rendering AI Character Artwork (1/6)…</div>
+                <div class="loading-progress-bar">
+                  <div class="progress-fill" id="canvasProgressFill" style="width: 20%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TOTAL PROFESSIONAL MEDIA PLAYER CONTROLS -->
+            <div class="player-controls-bar" id="playerControlsBar">
+              <!-- SCRUBBER TRACK -->
+              <div class="scrubber-row">
+                <input type="range" id="playerScrubber" class="player-scrubber" min="0" max="100" value="0" step="0.1">
+              </div>
+
+              <!-- CONTROLS ACTION ROW -->
+              <div class="controls-action-row">
+                <div class="left-controls">
+                  <button type="button" id="playPauseBtn" class="control-btn play-pause-btn" title="Play / Pause">▶</button>
+                  <div class="time-display">
+                    <span id="currentTimeDisplay">00:00</span> / <span id="totalTimeDisplay">00:30</span>
+                  </div>
+                </div>
+
+                <div class="right-controls">
+                  <div class="volume-container">
+                    <button type="button" id="muteBtn" class="control-btn icon-btn" title="Mute / Unmute">🔊</button>
+                    <input type="range" id="volumeSlider" class="volume-slider" min="0" max="1" step="0.05" value="1" title="Volume">
+                  </div>
+                  <button type="button" id="fullscreenBtn" class="control-btn icon-btn" title="Fullscreen">⛶</button>
+                </div>
+              </div>
+            </div>
+
+            <button type="button" id="exportVideoBtn" class="export-video-btn">
+              <span>⚡ EXPORT WEBM VIDEO (.webm)</span>
+              <span>↓</span>
+            </button>
+          </div>
+
+          <!-- RIGHT DETAILS COLUMN: PRODUCTION SCRIPT & STORYBOARD -->
+          <div class="details-column">
+            <div class="output-tabs">
+              <button type="button" class="tab-btn active" style="cursor:default; width:100%; text-align:left; font-size:15px; font-weight:700;">🎬 Reel Production Script & Scene Storyboard</button>
+            </div>
+
+            <div class="tab-content active" id="tabScript">
+              <div class="script-card">
+                <div class="script-header">
+                  <div>
+                    <h3 id="scriptTitle">--</h3>
+                    <span class="timing-badge" id="totalDurationBadge">Total Duration: 30 Seconds</span>
+                  </div>
+                  <button type="button" id="copyScriptBtn" class="copy-btn">📋 Copy Full Script</button>
+                </div>
+
+                <div class="script-section">
+                  <span class="section-tag">🔥 VIRAL HOOK</span>
+                  <p class="hook-text" id="scriptHook">--</p>
+                </div>
+
+                <div class="script-section">
+                  <span class="section-tag">📜 SCENE-BY-SCENE STORYBOARD & DIALOGUES</span>
+                  <div id="scenesTimeline" class="scene-timeline"></div>
+                </div>
+
+                <div class="script-section">
+                  <span class="section-tag">💬 CAPTION & HASHTAGS</span>
+                  <p class="caption-text" id="scriptCaption"></p>
+                  <div class="hashtags" id="scriptHashtags"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+  <audio id="ttsAudioPlayer" preload="auto" style="display:none;"></audio>
+
+  <script src="app.js?v=1.0.5"></script>
+</body>
+
+</html>
