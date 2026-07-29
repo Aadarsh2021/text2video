@@ -258,13 +258,20 @@ app.post(["/generate", "/api/generate"], async (req, res) => {
 
 function convertHinglishToHindiDevanagari(text) {
   if (!text) return '';
-  if (/[\u0900-\u097F]/.test(text)) return text; // Already Devanagari script
+  // If string contains no English letters (pure Devanagari), return as is
+  if (!/[a-zA-Z]/.test(text)) return text;
 
   const wordMap = {
     'main': 'मैं', 'aaj': 'आज', 'ek': 'एक', 'naye': 'नए', 'safar': 'सफर', 'par': 'पर', 'nikla': 'निकला', 'hoon': 'हूँ',
     'hai': 'है', 'hain': 'हैं', 'yeh': 'यह', 'woh': 'वह', 'kya': 'क्या', 'aapko': 'आपको', 'pata': 'पता', 'bhi': 'भी',
     'nahi': 'नहीं', 'nahin': 'नहीं', 'aur': 'और', 'se': 'से', 'ko': 'को', 'ka': 'का', 'ki': 'की', 'ke': 'के',
-    'baarish': 'बारिश', 'boondon': 'बूंदों', 'beech': 'बीच', 'shehar': 'शहर', 'sabse': 'सबसे', 'bada': 'बड़ा'
+    'baarish': 'बारिश', 'boondon': 'बूंदों', 'beech': 'बीच', 'shehar': 'शहर', 'sabse': 'सबसे', 'bada': 'बड़ा',
+    'khamoshi': 'खामोशी', 'gehrai': 'गहराई', 'bhari': 'भरी', 'is': 'इस', 'shandar': 'शानदार', 'duniya': 'दुनिया',
+    'mein': 'में', 'jhalak': 'झलक', 'aasman': 'आसमान', 'bikharti': 'बिखरती', 'roshni': 'रोशनी', 'thandi': 'ठंडी',
+    'hawaon': 'हवाओं', 'raaz': 'राज़', 'kholta': 'खोलता', 'drishti': 'दृष्टि', 'taakat': 'ताकत', 'shanti': 'शांति',
+    'chhipi': 'छिपी', 'nazara': 'नज़ारा', 'anubhav': 'अनुभव', 'chhu': 'छू', 'jayega': 'जाएगा', 'adbhut': 'अद्भुत',
+    'kahani': 'कहानी', 'viral': 'वायरल', 'dhyan': 'ध्यान', 'dekho': 'देखो', 'rokkar': 'रोककर', 'scroll': 'स्क्रॉल',
+    'hanuman': 'हनुमान', 'bhakti': 'भक्ति', 'har': 'हर', 'pal': 'पल', 'toh': 'तो', 'samajh': 'समझ', 'aayega': 'आएगा'
   };
 
   let out = String(text);

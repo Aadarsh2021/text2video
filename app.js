@@ -1002,6 +1002,30 @@ function getBestVoiceForLanguage(voices, gender, language, text) {
       return voices.find(v => /Female|Zira|Hazel|Susan/i.test(v.name)) || voices[0];
     }
   }
+function cleanTtsText(text) {
+  let cleaned = String(text || '')
+    .replace(/#\w+/g, '')
+    .replace(/[()[\]{}]/g, '')
+    .replace(/\bAI\b/gi, 'ए आई')
+    .replace(/\bVS\b/gi, 'वर्सेस')
+    .replace(/%/g, ' प्रतिशत')
+    .replace(/&/g, ' और ');
+
+  if (state.language === 'Hindi') {
+    const numMap = {
+      '15': 'पंद्रह', '30': 'तीस', '45': 'पैंतालीस', '60': 'साठ',
+      '1': 'एक', '2': 'दो', '3': 'तीन', '4': 'चार', '5': 'पांच',
+      '6': 'छह', '7': 'सात', '8': 'आठ', '9': 'नौ', '10': 'दस'
+    };
+    Object.keys(numMap).forEach(n => {
+      cleaned = cleaned.replace(new RegExp('\\b' + n + '\\b', 'g'), numMap[n]);
+    });
+  }
+
+  return cleaned
+    .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // ─── 100% FREE SEAMLESS AI VOICE & AUDIO CONTINUATION ENGINE (0ms GAP) ─────────
