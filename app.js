@@ -988,12 +988,26 @@ function convertHinglishToHindiDevanagari(text) {
 }
 
 function cleanTtsText(rawText) {
-  const cleaned = String(rawText || '')
+  let cleaned = String(rawText || '')
     .replace(/#\w+/g, '')
     .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}]/gu, '')
     .replace(/[()[\]{}]/g, '')
     .replace(/\bAI\b/gi, 'ए आई')
     .replace(/\bVS\b/gi, 'वर्सेस')
+    .replace(/%/g, ' प्रतिशत')
+    .replace(/&/g, ' और ');
+
+  // Convert digits to Devanagari Hindi words for 100% smooth TTS pronunciation
+  const numMap = {
+    '15': 'पंद्रह', '30': 'तीस', '45': 'पैंतालीस', '60': 'साठ',
+    '1': 'एक', '2': 'दो', '3': 'तीन', '4': 'चार', '5': 'पांच',
+    '6': 'छह', '7': 'सात', '8': 'आठ', '9': 'नौ', '10': 'दस'
+  };
+  Object.keys(numMap).forEach(n => {
+    cleaned = cleaned.replace(new RegExp('\\b' + n + '\\b', 'g'), numMap[n]);
+  });
+
+  cleaned = cleaned
     .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
