@@ -83,12 +83,9 @@ CRITICAL CONCEPT UNDERSTANDING & DIRECTION (STRICT):
    - Target Duration: EXACTLY ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
    - Scene Narration Length: Minimum ${targetWords} words per scene. Write a rich, immersive, continuous story.
 
-3. 100% WORD-FOR-WORD SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
-   - IF LANGUAGE IS "Hinglish":
-     * "narration" = Display subtitles in Roman Hinglish (e.g. "Main aaj ek naye safar par nikla hoon").
-     * "spokenNarration" = EXACT SAME SENTENCE in Devanagari Hindi script (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+3. 100% SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
    - IF LANGUAGE IS "Hindi":
-     * BOTH "narration" and "spokenNarration" MUST BE IN DEVANAGARI HINDI SCRIPT (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+     * BOTH "narration" and "spokenNarration" MUST BE 100% IN DEVANAGARI HINDI SCRIPT (e.g. "मैं आज एक नए सफर पर निकला हूँ"). NEVER return Roman English text.
    - IF LANGUAGE IS "English":
      * BOTH "narration" and "spokenNarration" MUST BE IN ENGLISH (e.g. "Today I embark on a brand new journey").
 

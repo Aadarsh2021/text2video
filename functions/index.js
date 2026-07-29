@@ -14,7 +14,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AQ.Ab8RN6ITYPEDxsbPTNwX1cE
 function buildScriptPrompt(requestData) {
   const userPrompt = String(requestData.prompt || '').trim();
   const targetDuration = Number(requestData.duration || requestData.targetDuration) || 30;
-  const language = requestData.language || 'Hinglish';
+  const language = requestData.language || 'Hindi';
   const voiceGender = requestData.voiceGender || 'Male';
   const sceneCount = targetDuration <= 15 ? 3 : targetDuration <= 30 ? 4 : targetDuration <= 45 ? 6 : 8;
   const sceneDuration = Math.round(targetDuration / sceneCount);
@@ -33,20 +33,14 @@ CRITICAL CONCEPT UNDERSTANDING & DIRECTION (STRICT):
    - DISAMBIGUATION RULE: If the prompt says "Black Panther" with "wildlife documentary" or "jungle/rain/animal" context → it is the REAL ANIMAL, NOT the Marvel superhero. Always use context to pick the right interpretation.
    - CINEMATIC MOOD PROMPTS: If the prompt describes a mood/atmosphere with no explicit story (e.g. 'lone astronaut in abandoned city at sunrise'), YOU MUST INVENT a compelling emotional arc — give the character an inner journey, a discovery, a moment of wonder, or a transformation across the scenes.
    - NO CHARACTER IN PROMPT: If the prompt has no human/animal character (e.g. 'Dubai penthouse at sunset', 'Earth seen from space', 'magical floating library') → INVENT a protagonist who is experiencing that scene. E.g. a billionaire reflecting on life, an astronaut watching Earth, a scholar discovering the magical library.
-   - VEHICLE/MACHINE SUBJECTS: If the main subject is a vehicle (Lamborghini, Formula 1 car) with no named driver → narrate from the DRIVER's perspective — their focus, adrenaline, emotion. subjectCharacter = the driver/pilot, not the machine.
-   - VIDEO PRODUCTION TERMS (IMAX, 4K HDR, 8K, drone shots, volumetric lighting, ultra-realistic, slow motion, cinematic shot, wide shot, close-up, aerial shot, FPV, HDR, orchestral, motion blur): These are VISUAL STYLE HINTS ONLY. Put them in the "visual" field ONLY. NEVER write them in narration/spokenNarration. A narrator speaks ONLY about the character's emotions, actions, and story — not about cameras, resolution, or lighting techniques.
-   - DO NOT return generic template stories. Every single word must reflect the user's exact prompt, character, and requested style.
 
 2. TARGET DURATION & SCENE TIMING:
    - Target Duration: EXACTLY ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
    - Scene Narration Length: Minimum ${targetWords} words per scene. Write a rich, immersive, continuous story.
 
-3. 100% WORD-FOR-WORD SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
-   - IF LANGUAGE IS "Hinglish":
-     * "narration" = Display subtitles in Roman Hinglish (e.g. "Main aaj ek naye safar par nikla hoon").
-     * "spokenNarration" = EXACT SAME SENTENCE in Devanagari Hindi script (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+3. 100% SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
    - IF LANGUAGE IS "Hindi":
-     * BOTH "narration" and "spokenNarration" MUST BE IN DEVANAGARI HINDI SCRIPT (e.g. "मैं आज एक नए सफर पर निकला हूँ").
+     * BOTH "narration" and "spokenNarration" MUST BE 100% IN DEVANAGARI HINDI SCRIPT (e.g. "मैं आज एक नए सफर पर निकला हूँ"). NEVER return Roman English text.
    - IF LANGUAGE IS "English":
      * BOTH "narration" and "spokenNarration" MUST BE IN ENGLISH (e.g. "Today I embark on a brand new journey").
 

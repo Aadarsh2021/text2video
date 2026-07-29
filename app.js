@@ -1,6 +1,6 @@
 // ReelShorts AI — 100% Preload Gate & Total Player Control Engine
 const state = {
-  language: 'Hinglish',
+  language: 'Hindi',
   style: 'Energetic',
   voiceGender: 'Male',
   captionStyle: 'Hormozi',
