@@ -454,25 +454,26 @@ app.get(["/image", "/api/image"], async (req, res) => {
     return false;
   }
 
-  // Tier 1: Pollinations FLUX
-  const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', cinematic 8k')}?width=540&height=960&nologo=true&model=flux&seed=${seed}`;
-  if (await streamImage(fluxUrl, 'Pollinations FLUX')) return;
+  // Tier 1: Pollinations FLUX Ultra HD (1080x1920)
+  const hdQualityPrompt = `${cleanPrompt}, masterpiece, 8k resolution, ultra-realistic, IMAX 70mm, volumetric dramatic lighting, highly detailed subject, sharp focus`;
+  const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(hdQualityPrompt)}?width=1080&height=1920&nologo=true&model=flux&enhance=true&seed=${seed}`;
+  if (await streamImage(fluxUrl, 'Pollinations FLUX Ultra HD')) return;
 
-  // Tier 2: Pollinations Turbo
-  const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
-  if (await streamImage(turboUrl, 'Pollinations Turbo')) return;
+  // Tier 2: Pollinations Turbo HD
+  const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(hdQualityPrompt)}?width=1080&height=1920&nologo=true&model=turbo&enhance=true&seed=${seed}`;
+  if (await streamImage(turboUrl, 'Pollinations Turbo HD')) return;
 
   // Tier 3: Picsum Guaranteed Photographic HD Engine (Never rate limits)
-  const picsumUrl = `https://picsum.photos/seed/${seed}/540/960`;
+  const picsumUrl = `https://picsum.photos/seed/${seed}/1080/1920`;
   if (await streamImage(picsumUrl, 'Picsum Engine')) return;
 
   // Tier 4: SVG Poster Concept
-  const svgPlaceholder = `<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960" viewBox="0 0 540 960">
+  const svgPlaceholder = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
     <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0f0c29"/><stop offset="100%" stop-color="#302b63"/></linearGradient></defs>
-    <rect width="540" height="960" fill="url(#g)"/>
-    <text x="270" y="430" font-family="Arial" font-size="48" fill="#a78bfa" text-anchor="middle">🎬</text>
-    <text x="270" y="500" font-family="Arial" font-size="18" font-weight="bold" fill="#e2e8f0" text-anchor="middle">AI Visual Concept</text>
-    <text x="270" y="540" font-family="Arial" font-size="13" fill="#94a3b8" text-anchor="middle">${cleanPrompt.slice(0, 45)}</text>
+    <rect width="1080" height="1920" fill="url(#g)"/>
+    <text x="540" y="860" font-family="Arial" font-size="96" fill="#a78bfa" text-anchor="middle">🎬</text>
+    <text x="540" y="1000" font-family="Arial" font-size="36" font-weight="bold" fill="#e2e8f0" text-anchor="middle">AI Visual Concept</text>
+    <text x="540" y="1080" font-family="Arial" font-size="24" fill="#94a3b8" text-anchor="middle">${cleanPrompt.slice(0, 45)}</text>
   </svg>`;
   res.setHeader('Content-Type', 'image/svg+xml');
   return res.send(svgPlaceholder);

@@ -93,7 +93,8 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
       || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} portrait`;
 
     const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
-    const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneImagePrompt + ', cinematic masterpiece 8k')}?width=540&height=960&nologo=true&seed=${uniqueSeed}`;
+    const hdQualityPrompt = `${sceneImagePrompt}, masterpiece, 8k resolution, photorealistic, IMAX 70mm, volumetric dramatic lighting, highly detailed subject, sharp focus`;
+    const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(hdQualityPrompt)}?width=1080&height=1920&nologo=true&model=flux&enhance=true&seed=${uniqueSeed}`;
     
     // Multi-tier backend image proxy with direct Cloud Run fallback
     const proxyUrl = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
