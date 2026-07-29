@@ -673,7 +673,7 @@ Return STRICT JSON format:
   let hook = language === 'English' 
     ? `Stop scrolling — Watch the incredible story of ${coreSubjectEnglish}!` 
     : `ध्यान से देखो — ${devanagariSubject} की एक ऐसी अद्भुत और दिव्य कहानी!`;
-  let caption = '✨ ' + cleanTopic + ' #Reels #Viral #AIVideo #Cinematic';
+  let caption = '✨ ' + coreSubjectEnglish + ' #Reels #Viral #AIVideo #Cinematic';
   let hashtags = ['#viral', '#reels', '#ai', '#cinematic'];
 
   const scenes = [];
@@ -683,10 +683,10 @@ Return STRICT JSON format:
 
     scenes.push({
       sceneNumber: i + 1,
-      visual: `${stylePrefix} ${cleanTopic}, scene ${i + 1}, cinematic lighting, photorealistic 8k, volumetric atmosphere`,
+      visual: `${stylePrefix} ${coreSubjectEnglish}, scene ${i + 1}, cinematic lighting, photorealistic 8k, volumetric atmosphere`,
       narration: narrationLine,
       spokenNarration: narrationLine,
-      onScreen: `Scene 0${i + 1} • ${coreSubject}`,
+      onScreen: `Scene 0${i + 1} • ${coreSubjectEnglish}`,
       color: ['#ea580c', '#2563eb', '#7c3aed', '#dc2626', '#059669', '#d97706'][i % 6],
       duration: sceneDuration
     });
