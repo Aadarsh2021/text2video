@@ -627,15 +627,17 @@ Return STRICT JSON format:
     console.warn('Groq client-side fetch note:', groqErr.message);
   }
 
-  // Tier 2: Natural Subject & Theme Extractor Fallback
-  let cleanTopic = promptText
-    .replace(/cinematic composition|ultra-realistic|emotional atmosphere|photorealistic 8k|8k|hd|volumetric lighting|4k|hyperdetailed|masterpiece|dramatic lighting/gi, '')
+  // Tier 2: Natural Subject & Theme Extractor Fallback (Clean & Grammatically Correct)
+  let cleanSubjectRaw = promptText
+    .replace(/\b(reel|reels|short|shorts|video|30 second|15 second|45 second|60 second|30s|15s|45s|60s|par|pe|se|ke|ka|ki|aur|and|par|per)\b/gi, ' ')
+    .replace(/cinematic composition|ultra-realistic|emotional atmosphere|photorealistic 8k|8k|hd|volumetric lighting|4k|hyperdetailed|masterpiece|dramatic lighting/gi, ' ')
     .replace(/[^a-zA-Z0-9\s\u0900-\u097F]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
-  const words = cleanTopic.split(' ');
-  const coreSubject = words.slice(0, 5).join(' ') || 'Cinematic Story';
+  const words = cleanSubjectRaw.split(' ').filter(w => w.length > 1);
+  const coreSubjectEnglish = words.slice(0, 3).join(' ') || 'Cinematic Story';
+  const devanagariSubject = convertHinglishToHindiDevanagari(coreSubjectEnglish);
 
   const shotStyles = [
     'Wide establishing cinematic angle of',
@@ -647,16 +649,16 @@ Return STRICT JSON format:
   ];
 
   const hindiFallbackLines = [
-    `${coreSubject} की भक्ति, शक्ति और शांति से भरी एक अद्भुत गाथा...`,
+    `${devanagariSubject} की असीम कृपा, शक्ति और शांति से भरी एक अद्भुत गाथा...`,
     `आसमान में बिखरती दिव्य रोशनी और शांत हवाओं के बीच, हर एक पल एक नया राज़ खोलता है।`,
-    `गहराई से देखोगे तो समझ आएगा कि इस भक्ति में कितनी बड़ी ताकत और शांति छिपी है।`,
+    `गहराई से देखोगे तो समझ आएगा कि इस पावन दृश्य में कितनी बड़ी ताकत और शांति छिपी है।`,
     `यह सिर्फ एक नज़ारा नहीं है, यह एक ऐसा दिव्य अनुभव है जो आपके दिल को छू जाएगा!`,
-    `भक्ति और समर्पण के इस सफर में, मन को असीम शांति और संबल मिलता है।`,
+    `समर्पण और भक्ति के इस पावन सफर में, मन को असीम शांति और संबल मिलता है।`,
     `यह है श्रद्धा और विश्वास की सबसे शानदार और अमर मिसाल।`
   ];
 
   const englishFallbackLines = [
-    `In a world filled with wonder, a brand new story of ${coreSubject} unfolds...`,
+    `In a world filled with wonder, a brand new story of ${coreSubjectEnglish} unfolds...`,
     `As golden light beams through the sky, every single moment reveals a hidden truth.`,
     `Look closely and you will discover the immense strength and peace hidden within.`,
     `This is not just a scene, it is a powerful emotional experience that touches your heart!`,
@@ -666,11 +668,11 @@ Return STRICT JSON format:
 
   const naturalStoryLines = language === 'English' ? englishFallbackLines : hindiFallbackLines;
 
-  let title = 'Cinematic Story: ' + coreSubject;
-  let subjectChar = coreSubject;
+  let title = 'Cinematic Story: ' + coreSubjectEnglish;
+  let subjectChar = coreSubjectEnglish;
   let hook = language === 'English' 
-    ? `Stop scrolling — Watch the incredible story of ${coreSubject}!` 
-    : `ध्यान से देखो — ${coreSubject} की एक ऐसी अद्भुत और दिव्य कहानी!`;
+    ? `Stop scrolling — Watch the incredible story of ${coreSubjectEnglish}!` 
+    : `ध्यान से देखो — ${devanagariSubject} की एक ऐसी अद्भुत और दिव्य कहानी!`;
   let caption = '✨ ' + cleanTopic + ' #Reels #Viral #AIVideo #Cinematic';
   let hashtags = ['#viral', '#reels', '#ai', '#cinematic'];
 
