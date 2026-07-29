@@ -857,7 +857,60 @@ function convertHinglishToHindiDevanagari(text) {
     const reg = new RegExp('\\b' + w + '\\b', 'gi');
     out = out.replace(reg, wordMap[w]);
   });
-  return out;
+
+  const vowels = {
+    'aa': 'आ', 'ai': 'ऐ', 'au': 'औ', 'ee': 'ई', 'oo': 'ऊ',
+    'a': 'अ', 'i': 'इ', 'u': 'उ', 'e': 'ए', 'o': 'ओ'
+  };
+
+  const matras = {
+    'aa': 'ा', 'ai': 'ै', 'au': 'ौ', 'ee': 'ी', 'oo': 'ू',
+    'i': 'ि', 'u': 'ु', 'e': 'े', 'o': 'ो'
+  };
+
+  const consonants = {
+    'ksh': 'क्ष', 'gy': 'ज्ञ', 'tr': 'त्र',
+    'kh': 'ख', 'gh': 'घ', 'ch': 'छ', 'jh': 'झ', 'th': 'थ', 'dh': 'ध',
+    'ph': 'फ', 'bh': 'भ', 'sh': 'श',
+    'k': 'क', 'g': 'ग', 'c': 'च', 'j': 'ज', 't': 'त', 'd': 'द', 'n': 'न',
+    'p': 'प', 'f': 'फ', 'b': 'ब', 'm': 'म', 'y': 'य', 'r': 'र', 'l': 'ल',
+    'v': 'व', 'w': 'व', 's': 'स', 'h': 'ह', 'z': 'ज़', 'q': 'क़'
+  };
+
+  return out.split(/(\s+)/).map(token => {
+    if (/^\s+$/.test(token) || /[\u0900-\u097F]/.test(token) || /^[0-9.,!?]+$/.test(token)) return token;
+    let w = token.toLowerCase();
+    let res = '';
+    let i = 0;
+    while (i < w.length) {
+      let matched = false;
+      for (let len of [3, 2, 1]) {
+        let sub = w.substr(i, len);
+        if (consonants[sub]) {
+          res += consonants[sub];
+          i += len;
+          for (let vLen of [2, 1]) {
+            let vSub = w.substr(i, vLen);
+            if (matras[vSub]) {
+              res += matras[vSub];
+              i += vLen;
+              break;
+            }
+          }
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        let v2 = w.substr(i, 2);
+        let v1 = w.substr(i, 1);
+        if (vowels[v2]) { res += vowels[v2]; i += 2; }
+        else if (vowels[v1]) { res += vowels[v1]; i += 1; }
+        else { res += w[i]; i++; }
+      }
+    }
+    return res;
+  }).join('');
 }
 
 function cleanTtsText(rawText) {
