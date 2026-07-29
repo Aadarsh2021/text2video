@@ -319,34 +319,13 @@ function renderCanvasFrame(ts = performance.now()) {
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, w, h);
 
-  // 6. Header Branding & Audio Equalizer Indicator
+  // 6. Clean Top Branding — text2video.ai ONLY
   ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
   ctx.font = '800 20px "JetBrains Mono", monospace';
-  ctx.fillText('TEXT2VIDEO.AI', 32, 54);
+  ctx.fillText('⚡ text2video.ai', 32, 54);
 
-  ctx.fillStyle = state.muted ? '#6b7280' : '#f59e0b';
-  for (let i = 0; i < 5; i++) {
-    const barH = (state.playing && !state.muted) ? 6 + Math.abs(Math.sin(ts * 0.01 + i)) * 16 : 6;
-    ctx.fillRect(205 + i * 7, 54 - barH, 4, barH);
-  }
-
-  const sceneCounter = `${String(idx + 1).padStart(2, '0')} / ${String(scenes.length).padStart(2, '0')}`;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.font = '700 16px "JetBrains Mono", monospace';
-  ctx.fillText(sceneCounter, w - 100, 54);
-
-  // 7. Scene Kicker Badge
-  ctx.fillStyle = '#7c3aed';
-  ctx.beginPath();
-  ctx.roundRect(36, h - 310, 170, 32, 8);
-  ctx.fill();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = '700 13px "JetBrains Mono", monospace';
-  ctx.fillText(idx === 0 ? '✦ VIRAL HOOK' : `SCENE ${idx + 1} DIRECTED`, 46, h - 289);
-
-  // 8. Spoken Dialogue Subtitle Highlighting
-  const fullText = scene.narration || scene.onScreen || '';
+  // 7. Spoken Dialogue Subtitle Highlighting (Clean & Professional)
+  const fullText = scene.narration || scene.spokenNarration || scene.onScreen || '';
   const words = fullText.split(/\s+/);
   const totalWords = words.length;
   const activeWordIdx = Math.min(Math.floor(sceneProgress * totalWords), totalWords - 1);
