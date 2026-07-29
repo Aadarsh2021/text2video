@@ -1,15 +1,16 @@
 :root {
-  --bg: #08070d;
-  --panel-bg: #110e1d;
-  --panel-border: rgba(255, 255, 255, 0.08);
-  --primary: #8b5cf6;
-  --primary-glow: rgba(139, 92, 246, 0.4);
-  --accent: #f59e0b;
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
+  --bg: #05070e;
+  --panel-bg: #0c101d;
+  --panel-border: rgba(99, 102, 241, 0.18);
+  --primary: #6366f1;
+  --primary-glow: rgba(99, 102, 241, 0.5);
+  --accent: #10b981;
+  --accent-glow: rgba(16, 185, 129, 0.4);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
   --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
-  --radius: 12px;
+  --radius: 14px;
 }
 
 * {
@@ -45,8 +46,9 @@ button {
   inset: 0;
   pointer-events: none;
   background: 
-    radial-gradient(circle at 20% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(245, 158, 11, 0.1) 0%, transparent 50%);
+    radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.22) 0%, transparent 45%),
+    radial-gradient(circle at 85% 20%, rgba(16, 185, 129, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 50% 85%, rgba(168, 85, 247, 0.16) 0%, transparent 50%);
   z-index: 0;
 }
 
@@ -277,13 +279,13 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 24px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--primary), #ec4899);
+  padding: 14px 28px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1 0%, #10b981 100%);
   color: #fff;
   font-weight: 700;
-  font-size: 14px;
-  box-shadow: 0 4px 20px var(--primary-glow);
+  font-size: 15px;
+  box-shadow: 0 4px 24px rgba(99, 102, 241, 0.45);
 }
 
 .run-btn:hover {

@@ -91,17 +91,20 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
       || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} portrait`;
 
     const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
-    const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneImagePrompt + ', highly detailed, masterpiece')}?width=540&height=960&nologo=true&seed=${uniqueSeed}`;
+    const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneImagePrompt + ', cinematic masterpiece 8k')}?width=540&height=960&nologo=true&seed=${uniqueSeed}`;
     
-    // Use local proxy if on localhost, or direct Pollinations AI if hosted on static host
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      img.src = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}&t=${Date.now() + i}`;
-    } else {
-      img.src = directPollinationsUrl;
-    }
+    // Tiered image loading failover
+    img.src = directPollinationsUrl;
 
     img.onload = () => safeDone(img);
-    img.onerror = () => safeDone(createFallbackCanvasImage(sc.color || '#2563eb', '#06050b'));
+    img.onerror = () => {
+      // Fallback 1: Cloud function proxy endpoint
+      const proxyUrl = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
+      const fallbackImg = new Image();
+      fallbackImg.onload = () => safeDone(fallbackImg);
+      fallbackImg.onerror = () => safeDone(createFallbackCanvasImage(sc.color || '#2563eb', '#06050b'));
+      fallbackImg.src = proxyUrl;
+    };
 
     // Audio preload in parallel (TTS server handles concurrency fine)
     const rawText = sc.spokenNarration || sc.narration || sc.onScreen || '';
@@ -506,11 +509,33 @@ async function generateScriptClientSide(promptText, duration, language, voiceGen
   const sceneDuration = Number((targetDuration / sceneCount).toFixed(1));
 
   try {
-    const sysInstruction = `Output strict JSON video script matching user prompt: "${promptText}". Schema: {"title":"Title","subjectCharacter":"Character","targetDuration":${targetDuration},"hook":"Viral Hook","caption":"Caption #reels","hashtags":["#reels","#viral"],"scenes":[{"sceneNumber":1,"visual":"Visual prompt for AI image","narration":"Hinglish spoken text","spokenNarration":"Hindi spoken text","onScreen":"Scene 01","duration":${sceneDuration}}]}`;
+    const sysInstruction = `You are ChatGPT and Gemini level Master Content Director AI. Analyze user concept deeply: "${promptText}".
+Understand subject, theme, emotional tone, visual aesthetic, and audience engagement strategy.
+Generate a high-converting short video script for Instagram Reels / TikTok in ${language || 'Hinglish'}.
+Output ONLY a raw valid JSON object (no markdown, no backticks) with schema:
+{
+  "title": "Short punchy video title",
+  "subjectCharacter": "Main subject",
+  "targetDuration": ${targetDuration},
+  "hook": "Attention-grabbing viral opening hook line",
+  "caption": "Engaging social post caption with hashtags",
+  "hashtags": ["#viral", "#reels", "#ai"],
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "visual": "Detailed cinematic AI image generation prompt with camera angle, lighting, aesthetic, 8k",
+      "narration": "Natural engaging Hinglish spoken text line for this scene",
+      "spokenNarration": "Hindi script in Devanagari script for TTS voice engine",
+      "onScreen": "Scene 01 • Scene Title",
+      "duration": ${sceneDuration}
+    }
+  ]
+}
+Ensure exactly ${sceneCount} scenes. Make visual prompts hyper-detailed and cinematic for text-to-image AI models.`;
+
     const pollRes = await fetch(`https://text.pollinations.ai/${encodeURIComponent(sysInstruction)}?json=true`);
     if (pollRes.ok) {
       const txt = await pollRes.text();
-      // Ensure response doesn't start with HTML tags
       if (!txt.trim().startsWith('<')) {
         const match = txt.match(/\{[\s\S]*\}/);
         if (match) {
@@ -527,74 +552,51 @@ async function generateScriptClientSide(promptText, duration, language, voiceGen
     console.warn('Client Pollinations script AI error:', e.message);
   }
 
-  // Smart Client Concept Intelligence Engine
-  const p = String(promptText || '').toLowerCase();
-  
-  if (/(hacker|cyberpunk|coding|code|computer|matrix|tech)/i.test(p)) {
-    return {
-      title: 'Neon Cyberpunk: Cyber Attack',
-      subjectCharacter: 'Cyberpunk Hacker',
-      targetDuration,
-      hook: 'Neon lights ke pichhe ek aisa hacker baitha hai jo poore shehar ke system ko hack kar sakta hai!',
-      caption: '💻 Neon Cyberpunk Hacker Vibes! #Cyberpunk #Hacker #Coding #Reels #AI',
-      hashtags: ['#cyberpunk', '#hacker', '#coding', '#reels', '#viral'],
-      scenes: [
-        { sceneNumber: 1, visual: 'Cyberpunk hacker typing furiously on glowing neon holographic keyboard inside dark apartment with rain hitting window photorealistic 8k', narration: 'Baarish ki boondon ke beech, neon lights ki chhaon mein ek hacker apna sabse bada code likh raha hai', spokenNarration: 'बारिश की बूंदों के बीच, नियॉन लाइट्स की छांव में एक हैकर अपना सबसे बड़ा कोड लिख रहा है', onScreen: 'Scene 01 • Cyberpunk Hacker', color: '#7c3aed', duration: sceneDuration },
-        { sceneNumber: 2, visual: 'Close up of hacker eyes reflecting green matrix code scrolling fast across glowing multi-monitor screens dramatic lighting 8k', narration: 'Har ek line ka code... ek naya darwaza kholta hai digital duniya ke sabse bade raaz tak', spokenNarration: 'हर एक लाइन का कोड... एक नया दरवाज़ा खोलता है डिजिटल दुनिया के सबसे बड़े राज़ तक', onScreen: 'Scene 02 • Mainframe Hack', color: '#059669', duration: sceneDuration },
-        { sceneNumber: 3, visual: 'Over the shoulder view of hacker watching encrypted security firewalls breach in glowing neon red and cyan 8k', narration: 'Jab poori duniya so rahi hoti hai, tab yeh digital ghost shehar ke mainframe par raj karta hai', spokenNarration: 'जब पूरी दुनिया सो रही होती है, तब यह डिजिटल घोस्ट शहर के मेनफ्रेम पर राज करता है', onScreen: 'Scene 03 • Firewall Breach', color: '#dc2626', duration: sceneDuration },
-        { sceneNumber: 4, visual: 'Hacker standing up looking out rainy apartment window over glowing cyberpunk metropolis skyline holding glowing memory drive 8k', narration: 'Mission complete. Ek naya cyberpunk avatar ab hamesha ke liye digital matrix mein amar ho gaya', spokenNarration: 'मिशन कम्पलीट. एक नया साइबरपंक अवतार अब हमेशा के लिए डिजिटल मैट्रिक्स में अमर हो गया', onScreen: 'Scene 04 • System Access', color: '#2563eb', duration: sceneDuration }
-      ]
-    };
-  }
+  // Natural Subject & Theme Extractor
+  let cleanTopic = promptText
+    .replace(/cinematic composition|ultra-realistic|emotional atmosphere|photorealistic 8k|8k|hd|volumetric lighting|4k|hyperdetailed|masterpiece|dramatic lighting/gi, '')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  if (/(gym|fat loss|weight loss|fitness|workout|muscle|diet)/i.test(p)) {
-    return {
-      title: 'Fitness Myth: Fat Loss vs Weight Loss',
-      subjectCharacter: 'Gym Athlete',
-      targetDuration,
-      hook: 'Kya aapko pata hai Fat Loss aur Weight Loss mein zameen aasmaan ka farak hai?',
-      caption: '💪 Gym Fitness Myths Busted! Fat Loss vs Weight Loss #Fitness #Gym #Reels #Health',
-      hashtags: ['#gym', '#fitness', '#fatloss', '#reels', '#viral'],
-      scenes: [
-        { sceneNumber: 1, visual: 'Fit gym athlete standing on weighing scale looking confused in modern aesthetic gym with neon dumbbells photorealistic 8k', narration: 'Weight Loss mein aapka pani, muscle aur fat teeno kam hota hai, jo aapki body ko kamzor karta hai', spokenNarration: 'वेट लॉस में आपका पानी, मसल और फैट तीनों कम होता है, जो आपकी बॉडी को कमजोर करता है', onScreen: 'Scene 01 • Weight Loss Myth', color: '#ea580c', duration: sceneDuration },
-        { sceneNumber: 2, visual: 'Muscular athlete lifting heavy barbell squats in intense gym lighting with sweat droplets glowing photorealistic 8k', narration: 'Lekin Fat Loss mein aap sirf body fat ghataate ho aur lean muscle mass ko maintain rakhte ho', spokenNarration: 'लेकिन फैट लॉस में आप सिर्फ बॉडी फैट घटाते हो और लीन मसल मास को मेंटेन रखते हो', onScreen: 'Scene 02 • True Fat Loss', color: '#2563eb', duration: sceneDuration },
-        { sceneNumber: 3, visual: 'Close up of healthy high protein meal prep with eggs chicken avocado and measuring tape in clean kitchen 8k', narration: 'Sahi protein diet aur strength training se aapka metabolism tez hota hai aur fat jaldi burn hota hai', spokenNarration: 'सही प्रोटीन डाइट और स्ट्रेंथ ट्रेनिंग से आपका मेटाबॉलिज्म तेज़ होता है और फैट जल्दी बर्न होता है', onScreen: 'Scene 03 • Nutrition & Diet', color: '#059669', duration: sceneDuration },
-        { sceneNumber: 4, visual: 'Athletic bodybuilder flexing abs in front of gym mirror with intense motivational lighting 8k', narration: 'Isiliye scale par vajan mat dekho, aaina aur body shape batayega aapki asli progress!', spokenNarration: 'इसलिए स्केल पर वजन मत देखो, आइना और बॉडी शेप बताएगा आपकी असली प्रोग्रेस!', onScreen: 'Scene 04 • Real Transformation', color: '#7c3aed', duration: sceneDuration }
-      ]
-    };
-  }
+  const words = cleanTopic.split(' ');
+  const coreSubject = words.slice(0, 5).join(' ') || 'Cinematic Story';
 
-  if (/(astronaut|space|earth|satellite|mars|cosmos|galaxy|universe)/i.test(p)) {
-    return {
-      title: 'Deep Space: Earth & Cosmos',
-      subjectCharacter: 'Astronaut',
-      targetDuration,
-      hook: 'Gehre antariksh se jab Dharti ko dekhoge, tab samajh aayega ki hum kitne chhote hain!',
-      caption: '🚀 Deep Space IMAX Visuals! #Space #Astronaut #NASA #Cosmos #Reels',
-      hashtags: ['#space', '#astronaut', '#earth', '#reels', '#viral'],
-      scenes: [
-        { sceneNumber: 1, visual: 'Lone astronaut floating in deep dark space gazing at glowing vibrant Earth with orbiting satellites IMAX 8k', narration: 'Gehre antariksh ki khamoshi mein, hamari neeli Dharti ek heere ki tarah chamakti hai', spokenNarration: 'गहरे अंतरिक्ष की खामोशी में, हमारी नीली धरती एक हीरे की तरह चमकती है', onScreen: 'Scene 01 • Deep Space', color: '#2563eb', duration: sceneDuration },
-        { sceneNumber: 2, visual: 'Close up astronaut helmet visor reflecting glowing Earth and thousand orbiting satellite networks 8k', narration: 'Hazaaron satellites aur roshni ke taar humein is vishal brahmand se jode rakhte hain', spokenNarration: 'हज़ारों सैटेलाइट्स और रोशनी के तार हमें इस विशाल ब्रह्मांड से जोड़े रखते हैं', onScreen: 'Scene 02 • Earth Orbit', color: '#059669', duration: sceneDuration },
-        { sceneNumber: 3, visual: 'Astronaut walking on dusty red Mars surface during dramatic golden sunset cinematic 8k', narration: 'Ek naye grah par pehla kadam... bhavishya ki nayi khoj aur umeedon ka safar', spokenNarration: 'एक नए ग्रह पर पहला कदम... भविष्य की नई खोज और उम्मीदों का सफर', onScreen: 'Scene 03 • Mars Horizon', color: '#ea580c', duration: sceneDuration },
-        { sceneNumber: 4, visual: 'Astronaut looking back at distant Earth glowing blue in starry deep space galaxy background 8k', narration: 'Yeh sirf ek yatra nahi hai, yeh insaniat ke sapno ki sabse badi jeet hai', spokenNarration: 'यह सिर्फ एक यात्रा नहीं है, यह इंसानियत के सपनों की सबसे बड़ी जीत है', onScreen: 'Scene 04 • Infinite Cosmos', color: '#7c3aed', duration: sceneDuration }
-      ]
-    };
-  }
+  const shotStyles = [
+    'Wide establishing cinematic angle of',
+    'Intense cinematic close-up shot focusing on the majestic details of',
+    'Dynamic low angle camera motion capturing',
+    'Breathtaking high-altitude IMAX wide shot revealing the scale of',
+    'Cinematic slow-motion side profile showcasing',
+    'Photorealistic atmospheric golden hour lighting over'
+  ];
 
-  let title = 'Cinematic Story: ' + promptText.slice(0, 35);
-  let subjectChar = 'Protagonist';
-  let hook = 'Scroll rokkar dhyan se suno — ek aisi kahani jo aapne pehle kabhi nahi dekhi!';
-  let caption = '🔥 ' + promptText + ' #Reels #Viral #AIVideo';
+  const naturalStoryLines = [
+    `Khamoshi aur gehrai se bhari is shandar duniya mein, ${coreSubject} ki ek adbhut jhalak...`,
+    `Aasman mein bikharti roshni aur thandi hawaon ke beech, har ek pal ek naya raaz kholta hai.`,
+    `Gahrai se dekhoge toh samajh aayega ki is drishti mein kitni badi taakat aur shanti chhipi hai.`,
+    `Yeh sirf ek nazara nahi hai, yeh ek aisa anubhav hai jo aapke dil ko chhu jayega!`,
+    `Akelapan aur shanti ke beech, ek naye safar ki shuruaat hoti hai.`,
+    `Yeh hai safalta aur dridhta ki sabse shandar aur yaadgar misaal.`
+  ];
+
+  let title = 'Cinematic Story: ' + coreSubject;
+  let subjectChar = coreSubject;
+  let hook = `Scroll rokkar dhyan se dekho — ${coreSubject} ki ek aisi adbhut aur viral kahani!`;
+  let caption = '✨ ' + cleanTopic + ' #Reels #Viral #AIVideo #Cinematic';
   let hashtags = ['#viral', '#reels', '#ai', '#cinematic'];
 
   const scenes = [];
   for (let i = 0; i < sceneCount; i++) {
+    const stylePrefix = shotStyles[i % shotStyles.length];
+    const narrationLine = naturalStoryLines[i % naturalStoryLines.length];
+
     scenes.push({
       sceneNumber: i + 1,
-      visual: `${promptText}, scene ${i + 1}, cinematic shot, photorealistic 8k, volumetric lighting`,
-      narration: `Scene ${i + 1}: ${promptText} - Ek anokha safar aur adbhut drishti`,
-      spokenNarration: `दृश्य ${i + 1}: ${promptText} - एक अनोखा सफर और अद्भुत दृष्टि`,
-      onScreen: `Scene 0${i + 1} • ReelShorts AI`,
+      visual: `${stylePrefix} ${cleanTopic}, scene ${i + 1}, cinematic lighting, photorealistic 8k, volumetric atmosphere`,
+      narration: narrationLine,
+      spokenNarration: narrationLine,
+      onScreen: `Scene 0${i + 1} • ${coreSubject}`,
       color: ['#ea580c', '#2563eb', '#7c3aed', '#dc2626', '#059669', '#d97706'][i % 6],
       duration: sceneDuration
     });
@@ -896,9 +898,13 @@ function playStudioNaturalVoice(startSceneIdx) {
       const voices = state.voices.length > 0 ? state.voices : window.speechSynthesis.getVoices();
       const voice = getBestVoiceForLanguage(voices, state.voiceGender, state.language, cleanText);
       const utt = new SpeechSynthesisUtterance(cleanText);
-      utt.rate = 1.0;
+      utt.lang = (state.language === 'English') ? 'en-US' : 'hi-IN';
+      if (voice) {
+        utt.voice = voice;
+        if (voice.lang) utt.lang = voice.lang;
+      }
+      utt.rate = 0.95;
       utt.pitch = state.voiceGender === 'Male' ? 0.9 : 1.1;
-      if (voice) utt.voice = voice;
 
       utt.onstart = () => {
         state.speaking = true;
