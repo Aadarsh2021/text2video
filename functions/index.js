@@ -44,7 +44,7 @@ CRITICAL CONCEPT UNDERSTANDING & DIRECTION (STRICT):
 
 2. TARGET DURATION & SCENE TIMING:
    - Target Duration: EXACTLY ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
-   - Scene Narration Length: Minimum ${targetWords} words per scene. Write a rich, immersive, continuous story.
+   - Scene Narration Length: EXACTLY 20 to 30 WORDS per scene (2-3 full descriptive sentences per scene). NEVER write short 5-word lines. Each scene narration must fill the entire ${sceneDuration} seconds of narration time continuously.
 
 3. 100% SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
    - IF LANGUAGE IS "Hindi":
@@ -328,9 +328,15 @@ function convertHinglishToHindiDevanagari(text) {
   }).join('');
 }
 
-// 3. 100% Free Neural MP3 TTS Voice Endpoint (Handles both /tts and /api/tts)
+const { MsEdgeTTS, OUTPUT_FORMAT } = require("msedge-tts");
+const fs = require("fs").promises;
+const os = require("os");
+const path = require("path");
+
+// 3. 100% Free Real Male & Female Neural MP3 TTS Voice Endpoint (Handles both /tts and /api/tts)
 app.get(["/tts", "/api/tts"], async (req, res) => {
   const rawText = req.query.text || 'नमस्ते';
+  const gender = req.query.gender || 'Male';
   const langParam = req.query.lang === 'en' ? 'en' : 'hi';
 
   let cleaned = String(rawText || '')
@@ -362,6 +368,36 @@ app.get(["/tts", "/api/tts"], async (req, res) => {
 
   if (!cleanNarration) return res.status(400).send('Empty text');
 
+  // Voice Map: Real Indian Male (Madhur) vs Female (Swara) Neural Voices
+  const VOICE_MAP = {
+    'Male_hi': 'hi-IN-MadhurNeural',      // Deep Male Heroic Voice
+    'Female_hi': 'hi-IN-SwaraNeural',     // Energetic Female Host Voice
+    'Male_en': 'en-IN-PrabhatNeural',     // Male English Voice
+    'Female_en': 'en-IN-NeerjaNeural'     // Female English Voice
+  };
+
+  const isHindi = langParam === 'hi' || /[\u0900-\u097F]/.test(cleanNarration);
+  const voiceKey = `${gender === 'Female' ? 'Female' : 'Male'}_${isHindi ? 'hi' : 'en'}`;
+  const voiceName = VOICE_MAP[voiceKey] || 'hi-IN-MadhurNeural';
+
+  try {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'edge-tts-'));
+    const tts = new MsEdgeTTS();
+    await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+    const fileResult = await tts.toFile(tmpDir, cleanNarration);
+    const finalBuffer = await fs.readFile(fileResult.audioFilePath);
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+
+    if (finalBuffer && finalBuffer.length > 0) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(finalBuffer);
+    }
+  } catch (e) {
+    console.warn('Edge TTS streaming note, using Google fallback:', e.message);
+  }
+
+  // Fallback to Google Translate TTS
   try {
     const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanNarration)}&tl=${langParam}&client=tw-ob`;
     const googleRes = await fetch(ttsUrl, {
@@ -375,7 +411,7 @@ app.get(["/tts", "/api/tts"], async (req, res) => {
       return res.send(Buffer.from(arrayBuffer));
     }
   } catch (e) {
-    console.warn('TTS streaming error:', e.message);
+    console.warn('Google TTS streaming error:', e.message);
   }
 
   return res.status(500).json({ error: 'TTS stream failed' });
