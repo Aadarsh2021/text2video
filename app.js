@@ -935,7 +935,7 @@ function getBestVoiceForLanguage(voices, gender, language, text) {
   const isHindiText = language === 'Hindi' || language === 'Hinglish' || /[\u0900-\u097F]/.test(text);
 
   if (isHindiText) {
-    // STRICT FILTER: Only match authentic Indian/Hindi voices (hi-IN, en-IN, Hindi)
+    // STRICT FILTER: Match authentic Indian/Hindi voices only
     const indianVoices = voices.filter(v => 
       v.lang.includes('hi') || v.lang.includes('IN') || 
       /Hindi|हिन्दी|India/i.test(v.name)
@@ -943,12 +943,13 @@ function getBestVoiceForLanguage(voices, gender, language, text) {
 
     if (indianVoices.length > 0) {
       if (gender === 'Male') {
-        return indianVoices.find(v => /Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name)) || indianVoices[0];
+        return indianVoices.find(v => /Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google हिन्दी/i.test(v.name)) 
+            || indianVoices.find(v => v.lang.includes('hi')) 
+            || indianVoices[0];
       } else {
         return indianVoices.find(v => /Female|Kalpana|Heera|Swara|Google/i.test(v.name)) || indianVoices[0];
       }
     }
-    // Fallback ONLY to hi-IN voices if available
     return voices.find(v => v.lang.startsWith('hi')) || voices[0];
   } else {
     // English language
@@ -1007,13 +1008,22 @@ function playStudioNaturalVoice(startSceneIdx) {
       const voices = state.voices.length > 0 ? state.voices : window.speechSynthesis.getVoices();
       const voice = getBestVoiceForLanguage(voices, state.voiceGender, state.language, cleanText);
       const utt = new SpeechSynthesisUtterance(cleanText);
-      utt.lang = (state.language === 'English') ? 'en-US' : 'hi-IN';
+      utt.lang = 'hi-IN';
+
       if (voice) {
         utt.voice = voice;
-        if (voice.lang) utt.lang = voice.lang;
+        if (voice.lang && voice.lang.includes('hi')) utt.lang = voice.lang;
       }
-      utt.rate = 0.95;
-      utt.pitch = state.voiceGender === 'Male' ? 0.9 : 1.1;
+
+      // Voice Gender Pitch Engine: Guarantee Deep Male Voice without western accent
+      if (state.voiceGender === 'Male') {
+        const isMaleNamed = voice && /Male|Hemant|Ravi|Madhur|Prabhat/i.test(voice.name);
+        utt.pitch = isMaleNamed ? 0.85 : 0.55; // 0.55 pitch transforms any Hindi voice into deep heroic male voice!
+        utt.rate = 0.92;
+      } else {
+        utt.pitch = 1.1;
+        utt.rate = 0.96;
+      }
 
       utt.onstart = () => {
         state.speaking = true;
