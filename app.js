@@ -578,7 +578,7 @@ Schema:
   // Tier 1 Client-Side: Groq Cloud Llama 3.3 70B Versatile (Free, instant AI script generation)
   try {
     const sysPrompt = `You are an Oscar-Winning Hollywood Director & Master Storyteller.
-Transform the prompt: "${userPrompt}" into a video script.
+Transform the prompt: "${promptText}" into a video script.
 Target Duration: ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
 Language: "${language}". Voice Gender: "${voiceGender}".
 CRITICAL: If Language is "Hindi", write BOTH "narration" and "spokenNarration" 100% in Devanagari Hindi script (e.g. "मैं आज एक नए सफर पर निकला हूँ"). Never return Roman English text.
