@@ -1127,8 +1127,14 @@ function playStudioNaturalVoice(startSceneIdx) {
       utt.onend = handleEnded;
       utt.onerror = handleEnded;
 
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utt);
+      try {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utt);
+      } catch (e) {
+        console.warn('Speech synthesis speak exception:', e.message);
+        handleEnded();
+      }
     };
 
     // Female Voice: Uses Google Neural Female MP3 Stream

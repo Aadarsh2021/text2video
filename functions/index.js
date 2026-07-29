@@ -90,8 +90,8 @@ JSON Structure (strict):
 }`;
 }
 
-// 1. Script Generation Endpoint
-app.post("/generate", async (req, res) => {
+// 1. Script Generation Endpoint (Handles both /generate and /api/generate)
+app.post(["/generate", "/api/generate"], async (req, res) => {
   const body = req.body || {};
   const promptText = String(body.prompt || '').trim();
   const duration = Number(body.duration) || 30;
