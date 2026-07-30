@@ -659,19 +659,19 @@ async function generateVideo() {
     state.currentScene = 0;
     state.prevScene = -1;
 
-    if (overlayText) overlayText.textContent = `🎨 Generating HD Scene Artwork (0/${state.reel.scenes?.length || 0})… Please wait`;
+    if (overlayText) overlayText.textContent = `🎬 Generating Real AI MP4 Video Clips (0/${state.reel.scenes?.length || 0})… Please wait`;
     if (progressFill) progressFill.style.width = `35%`;
 
-    // Wait 100% until all scene visuals are loaded BEFORE rendering workspace or playing audio
+    // Wait 100% until all scene video clips are loaded BEFORE rendering workspace or playing audio
     await preloadAllSceneVisuals(state.reel.scenes || [], (loaded, total) => {
       const pct = Math.round(35 + (loaded / total) * 65);
-      if (overlayText) overlayText.textContent = `🎨 Generating HD Scene Artwork (Scene ${loaded} of ${total})… Please wait`;
+      if (overlayText) overlayText.textContent = `🎬 Generating Real AI MP4 Video Clips (Scene ${loaded} of ${total})… Please wait`;
       if (progressFill) progressFill.style.width = `${pct}%`;
     });
 
     renderWorkspace();
 
-    if (overlayText) overlayText.textContent = `🎬 All HD Scenes Ready! Launching Studio Player…`;
+    if (overlayText) overlayText.textContent = `🎬 All AI Video Clips Ready! Launching Studio Player…`;
     if (progressFill) progressFill.style.width = `100%`;
 
     // 100% HIDE LOADING OVERLAY BEFORE VOICE & VIDEO START PLAYING
