@@ -227,46 +227,9 @@ function renderCanvasFrame(ts = performance.now()) {
     ctx.scale(enterScale, enterScale);
     ctx.translate(-w / 2, -h / 2);
   } else {
-    const motionMode = state.cameraMotion || 'KenBurns';
-    const sceneIdx = state.currentScene || 0;
-    
-    // Dynamic 3D Cinematic Motion Physics per Scene (Transforms static image to live motion video)
-    let zoom = 1.0;
-    let panX = 0;
-    let panY = 0;
-    let rotateAngle = 0;
-
-    const phase = (sceneIdx % 4);
-    if (phase === 0) {
-      // Scene 1: Cinematic Push-In & Right Pan Glide
-      zoom = 1.0 + (sceneProgress * 0.28);
-      panX = -45 + (sceneProgress * 90);
-      panY = Math.sin(sceneProgress * Math.PI) * -18;
-      rotateAngle = -0.02 + (sceneProgress * 0.04);
-    } else if (phase === 1) {
-      // Scene 2: Epic Low-Angle Lift & Vertical Pan
-      zoom = 1.25 - (sceneProgress * 0.20);
-      panX = Math.cos(sceneProgress * Math.PI) * 35;
-      panY = 40 - (sceneProgress * 80);
-      rotateAngle = 0.02 - (sceneProgress * 0.04);
-    } else if (phase === 2) {
-      // Scene 3: Dynamic Pulse Shake & Orbital Shift
-      const pulse = state.playing ? Math.sin(ts * 0.003) * 6 : 0;
-      zoom = 1.10 + (Math.sin(sceneProgress * Math.PI * 1.5) * 0.18);
-      panX = Math.sin(sceneProgress * Math.PI * 2) * 42 + pulse;
-      panY = Math.cos(sceneProgress * Math.PI * 2) * 25;
-      rotateAngle = Math.sin(sceneProgress * Math.PI) * 0.025;
-    } else {
-      // Scene 4: IMAX Hyper Zoom Out & Sunset Glide
-      zoom = 1.32 - (sceneProgress * 0.26);
-      panX = 50 - (sceneProgress * 100);
-      panY = -30 + (sceneProgress * 60);
-      rotateAngle = -0.015 + (sceneProgress * 0.03);
-    }
-
-    ctx.translate(w / 2 + panX, h / 2 + panY);
-    ctx.rotate(rotateAngle);
-    ctx.scale(zoom, zoom);
+    // Steady 1:1 Clean Video/Image Frame (No artificial photo zoom or tilt)
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(1.0, 1.0);
     ctx.translate(-w / 2, -h / 2);
   }
 
