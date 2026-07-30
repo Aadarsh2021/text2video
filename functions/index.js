@@ -440,7 +440,7 @@ app.get(["/image", "/api/image"], async (req, res) => {
 
       if (imgRes.ok) {
         const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-        if (contentType.includes('image')) {
+        if (contentType.includes('image') || contentType.includes('video')) {
           res.setHeader('Content-Type', contentType);
           res.setHeader('Cache-Control', 'public, max-age=86400');
           const arrayBuffer = await imgRes.arrayBuffer();
@@ -477,6 +477,32 @@ app.get(["/image", "/api/image"], async (req, res) => {
   </svg>`;
   res.setHeader('Content-Type', 'image/svg+xml');
   return res.send(svgPlaceholder);
+});
+
+// 4. REAL AI VIDEO GENERATOR ENDPOINT (Handles both /video and /api/video)
+app.get(["/video", "/api/video"], async (req, res) => {
+  const prompt = req.query.prompt || 'cinematic moving scene';
+  const seed = req.query.seed || Math.floor(Math.random() * 10000);
+  const cleanPrompt = String(prompt).slice(0, 300);
+
+  const videoPrompt = `${cleanPrompt}, highly dynamic motion video, 8k resolution, cinematic moving subject, photorealistic video clip, fluid motion`;
+
+  try {
+    const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(videoPrompt)}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
+    const vidRes = await fetch(videoUrl);
+    if (vidRes.ok) {
+      const contentType = vidRes.headers.get('content-type') || 'video/mp4';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const buffer = await vidRes.arrayBuffer();
+      return res.send(Buffer.from(buffer));
+    }
+  } catch (e) {
+    console.warn('Real AI Video endpoint note, redirecting to image endpoint:', e.message);
+  }
+
+  // Fallback to high-res image stream
+  return res.redirect(`/api/image?prompt=${encodeURIComponent(prompt)}&seed=${seed}`);
 });
 
 // Export Cloud Function with public unauthenticated invoker access

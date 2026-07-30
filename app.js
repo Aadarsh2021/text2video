@@ -45,114 +45,88 @@ function escapeHtml(str = '') {
   })[c]);
 }
 
-// 100% PRE-LOAD OF ALL AI SCENE IMAGES AND AI AUDIO MP3s (0ms GAP BETWEEN SCENES)
+/// 100% PRE-LOAD OF ALL REAL AI VIDEOS AND AI AUDIO MP3s (0ms GAP BETWEEN SCENES)
 async function preloadAllSceneVisuals(scenes, onProgress) {
-  state.sceneImages = {};
+  state.sceneVideos = {};
   state.sceneAudios = {};
   let loadedCount = 0;
   const total = scenes.length;
 
-  const createFallbackCanvasImage = (color1 = '#7c3aed', color2 = '#06050b') => {
-    const c = document.createElement('canvas');
-    c.width = 540; c.height = 960;
-    const ctx = c.getContext('2d');
-    const g = ctx.createLinearGradient(0, 0, 0, 960);
-    g.addColorStop(0, color1);
-    g.addColorStop(1, color2);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 540, 960);
-    const img = new Image();
-    img.src = c.toDataURL('image/jpeg');
-    return img;
-  };
-
-  // Load images SEQUENTIALLY in batches of 2 with gap — avoids Pollinations rate limiting
-  // Promise.all (all at once) was causing scenes 3-8 to fail due to Pollinations throttling
   const loadScene = (sc, i) => new Promise((resolve) => {
     let isResolved = false;
-    const safeDone = (imgObj) => {
+    const safeDone = (vidObj) => {
       if (isResolved) return;
       isResolved = true;
       clearTimeout(safetyTimer);
-      state.sceneImages[i] = imgObj;
+      state.sceneVideos[i] = vidObj;
       loadedCount++;
       if (onProgress) onProgress(loadedCount, total);
       resolve();
     };
 
-    // 35s safety timer — gives server time to try Turbo (12s) + FLUX (12s) = 24s max
     const safetyTimer = setTimeout(() => {
-      safeDone(createFallbackCanvasImage(sc.color || '#4c1d95', '#06050b'));
-    }, 35000);
+      // Safety fallback HTML5 video element
+      const fallbackVid = document.createElement('video');
+      safeDone(fallbackVid);
+    }, 25000);
 
-    // Image — use sc.visual directly
-    const img = new Image();
-    img.crossOrigin = 'anonymous'; // Enforce CORS origin-clean canvas drawing
-
-    const sceneImagePrompt = (sc.visual || '').trim()
-      || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} portrait`;
-
+    const sceneVideoPrompt = (sc.visual || '').trim()
+      || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} motion video`;
     const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
-    const hdQualityPrompt = `${sceneImagePrompt}, masterpiece, 8k resolution, photorealistic, IMAX 70mm, volumetric dramatic lighting, highly detailed subject, sharp focus`;
-    const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(hdQualityPrompt)}?width=1080&height=1920&nologo=true&model=flux&enhance=true&seed=${uniqueSeed}`;
-    
-    // Multi-tier backend image proxy with direct Cloud Run fallback
-    const proxyUrl = `/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
-    const directCloudRunImageUrl = `https://api-vvwtkdts6q-uc.a.run.app/api/image?prompt=${encodeURIComponent(sceneImagePrompt)}&seed=${uniqueSeed}`;
 
-    img.onload = () => safeDone(img);
-    img.onerror = () => {
-      // Tier 2: Direct Cloud Run Function
-      const crImg = new Image();
-      crImg.crossOrigin = 'anonymous';
-      crImg.onload = () => safeDone(crImg);
-      crImg.onerror = () => {
-        // Tier 3: Pollinations Direct
-        const fallbackImg = new Image();
-        fallbackImg.crossOrigin = 'anonymous';
-        fallbackImg.onload = () => safeDone(fallbackImg);
-        fallbackImg.onerror = () => safeDone(createFallbackCanvasImage('#312e81', '#06050b', `Scene ${i+1}`));
-        fallbackImg.src = directPollinationsUrl;
-      };
-      crImg.src = directCloudRunImageUrl;
+    // 100% Real AI Video Clip Preloader
+    const vid = document.createElement('video');
+    vid.crossOrigin = 'anonymous';
+    vid.muted = true;
+    vid.loop = true;
+    vid.playsInline = true;
+
+    vid.oncanplaythrough = () => {
+      vid.play().catch(() => {});
+      safeDone(vid);
     };
-    img.src = proxyUrl;
+    vid.onloadeddata = () => {
+      vid.play().catch(() => {});
+      safeDone(vid);
+    };
+    vid.onerror = () => {
+      // Direct Cloud Run / Direct Pollinations Video URL
+      const directVidUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneVideoPrompt + ', highly dynamic motion video, 8k resolution, cinematic moving clip')}?model=video&width=540&height=960&nologo=true&seed=${uniqueSeed}`;
+      vid.src = directVidUrl;
+      safeDone(vid);
+    };
 
-    // Audio preload in parallel (TTS server handles concurrency fine)
+    vid.src = `/api/video?prompt=${encodeURIComponent(sceneVideoPrompt)}&seed=${uniqueSeed}`;
+
+    // Parallel Audio Preload
     const rawText = sc.spokenNarration || sc.narration || sc.onScreen || '';
     const cleanText = cleanTtsText(rawText);
     const lang = state.language === 'English' ? 'en' : 'hi';
     const proxyTtsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&lang=${lang}&gender=${state.voiceGender}&t=${Date.now()}`;
-    const directTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(cleanText)}&tl=${lang}&client=tw-ob`;
 
     const audio = new Audio();
     audio.preload = 'auto';
     audio.src = proxyTtsUrl;
-    audio.onerror = () => {
-      audio.src = directTtsUrl;
-    };
     state.sceneAudios[i] = audio;
   });
 
-  // Load ONE image at a time — no race conditions, no Pollinations throttling
-  // Gap between each image gives Pollinations time to process the previous one
-  const BATCH_DELAY_MS = 1200; // 1.2s gap between each image request
-
-  for (let i = 0; i < scenes.length; i++) {
-    await loadScene(scenes[i], i);
-    // Gap before next image (skip after last)
-    if (i < scenes.length - 1) {
-      await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
-    }
+  for (let i = 0; i < scenes.length; i += 2) {
+    const batch = scenes.slice(i, i + 2);
+    await Promise.all(batch.map((sc, idx) => loadScene(sc, i + idx)));
+    if (i + 2 < scenes.length) await new Promise(r => setTimeout(r, 400));
   }
 
   renderCanvasFrame();
 }
 
-// Aspect-Ratio Preserving Canvas Cover Renderer
+// Aspect-Ratio Preserving Canvas Cover Renderer (Supports Video and Image Elements)
 function drawImageCover(ctx, img, w, h) {
-  if (!img || !img.complete || img.naturalWidth === 0) return;
-  const imgRatio = img.naturalWidth / img.naturalHeight;
+  if (!img) return;
+  const naturalW = img.videoWidth || img.naturalWidth || img.width || 0;
+  const naturalH = img.videoHeight || img.naturalHeight || img.height || 0;
+  if (naturalW === 0 || naturalH === 0) return;
+
+  const imgRatio = naturalW / naturalH;
   const canvasRatio = w / h;
   let renderW, renderH, offsetX, offsetY;
 
@@ -271,7 +245,11 @@ function renderCanvasFrame(ts = performance.now()) {
     ctx.translate(-w / 2, -h / 2);
   }
 
-  if (bgImg && bgImg.complete && bgImg.naturalWidth !== 0) {
+  const bgVid = state.sceneVideos ? state.sceneVideos[state.currentScene] : null;
+  if (bgVid && bgVid.readyState >= 2 && bgVid.videoWidth !== 0) {
+    if (bgVid.paused && state.playing) bgVid.play().catch(() => {});
+    drawImageCover(ctx, bgVid, w, h);
+  } else if (bgImg && bgImg.complete && bgImg.naturalWidth !== 0) {
     drawImageCover(ctx, bgImg, w, h);
   } else {
     const grad = ctx.createLinearGradient(0, 0, 0, h);

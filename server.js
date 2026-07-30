@@ -81,7 +81,7 @@ CRITICAL CONCEPT UNDERSTANDING & DIRECTION (STRICT):
 
 2. TARGET DURATION & SCENE TIMING:
    - Target Duration: EXACTLY ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
-   - Scene Narration Length: Minimum ${targetWords} words per scene. Write a rich, immersive, continuous story.
+   - Scene Narration Length: EXACTLY 20 to 30 WORDS per scene (2-3 full descriptive sentences per scene). NEVER write short 5-word lines. Each scene narration must fill the entire ${sceneDuration} seconds of narration time continuously.
 
 3. 100% SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
    - IF LANGUAGE IS "Hindi":
@@ -522,6 +522,31 @@ async function handleServerRequest(request, response) {
       </svg>`;
       response.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
       response.end(svgPlaceholder);
+      return;
+    }
+
+    // REAL AI VIDEO GENERATOR ENDPOINT (/api/video)
+    if (request.method === 'GET' && url.pathname === '/api/video') {
+      const prompt = url.searchParams.get('prompt') || 'cinematic motion';
+      const seed = url.searchParams.get('seed') || Math.floor(Math.random() * 10000);
+      const videoPrompt = `${prompt}, highly dynamic motion video, 8k resolution, cinematic moving subject, photorealistic video clip, fluid motion`;
+
+      try {
+        const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(videoPrompt)}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
+        const vidRes = await fetch(videoUrl);
+        if (vidRes.ok) {
+          const contentType = vidRes.headers.get('content-type') || 'video/mp4';
+          const buffer = await vidRes.arrayBuffer();
+          response.writeHead(200, { 'Content-Type': contentType, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
+          response.end(Buffer.from(buffer));
+          return;
+        }
+      } catch (e) {
+        console.warn('Server video stream error:', e.message);
+      }
+
+      response.writeHead(302, { 'Location': `/api/image?prompt=${encodeURIComponent(prompt)}&seed=${seed}` });
+      response.end();
       return;
     }
 
