@@ -532,53 +532,88 @@ async function handleServerRequest(request, response) {
         .replace(/[^a-zA-Z0-9\s]/g, '')
         .trim() || 'cinematic motion';
 
+      // Stream video from remote URL directly to response (no memory buffering = no OOM)
       async function sendVideo(urlStr, providerName, reqHeaders = {}) {
         try {
           const controller = new AbortController();
-          // Increased to 20s — AI video generation models need more time
           const timer = setTimeout(() => controller.abort(), 20000);
-          const vidRes = await fetch(urlStr, { signal: controller.signal, headers: reqHeaders });
+          const vidRes = await fetch(urlStr, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0', ...reqHeaders },
+            redirect: 'follow'
+          });
           clearTimeout(timer);
           if (vidRes.ok) {
             const contentType = vidRes.headers.get('content-type') || 'video/mp4';
-            const arrayBuffer = await vidRes.arrayBuffer();
-            response.writeHead(200, { 'Content-Type': contentType, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
-            response.end(Buffer.from(arrayBuffer));
+            // Only accept actual video content types
+            if (!contentType.includes('video') && !contentType.includes('octet-stream')) {
+              return false;
+            }
+            response.writeHead(200, {
+              'Content-Type': 'video/mp4',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=86400'
+            });
+            // Stream directly — no arrayBuffer() to avoid memory crashes on large files
+            const { Readable } = require('stream');
+            Readable.fromWeb(vidRes.body).pipe(response);
             return true;
           }
         } catch (e) {
-          console.warn(`[Server Video Stream] ${providerName} note:`, e.message);
+          if (!response.headersSent) {
+            console.warn(`[Video] ${providerName}:`, e.message);
+          }
         }
         return false;
       }
 
-      // Model 1: Pixabay Film HD Video (FASTEST — direct MP4, no AI wait time)
+      // Extract simple short keywords for Pixabay search
+      const shortKeywords = keywords
+        .split(/\s+/)
+        .filter(w => w.length > 3)
+        .slice(0, 3)
+        .join(' ')
+        .slice(0, 30) || 'nature';
+
+      // Model 1: Pixabay video search (fast, free, reliable CDN)
       const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
       const tryPixabay = async (query) => {
         try {
-          const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(query)}&per_page=15&video_type=film`);
+          const pxaRes = await fetch(
+            `https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(query)}&per_page=15&video_type=film&safesearch=true`,
+            { headers: { 'User-Agent': 'Mozilla/5.0' } }
+          );
           if (pxaRes.ok) {
             const data = await pxaRes.json();
-            if (data && data.hits && data.hits.length > 0) {
+            if (data?.hits?.length > 0) {
               const hit = data.hits[Number(seed) % data.hits.length];
-              const mp4Url = hit.videos?.medium?.url || hit.videos?.large?.url || hit.videos?.small?.url;
-              if (mp4Url && await sendVideo(mp4Url, 'Pixabay HD Video Engine')) return true;
+              // Use tiny/small URL — always works, no auth needed
+              const mp4Url = hit.videos?.tiny?.url || hit.videos?.small?.url || hit.videos?.medium?.url;
+              if (mp4Url && await sendVideo(mp4Url, 'Pixabay HD Video')) return true;
             }
           }
-        } catch (e) { console.warn('[Pixabay Video] note:', e.message); }
+        } catch (e) { console.warn('[Pixabay]:', e.message); }
         return false;
       };
-      // Try specific keywords first, then generic fallback
-      if (await tryPixabay(keywords.slice(0, 35))) return;
-      if (await tryPixabay('cinematic motion people')) return;
 
-      // Model 2: Static fallback clip (instant — always works)
-      const defaultVideoUrl = `https://pixabay.com/videos/download/video-31377_medium.mp4`;
-      if (await sendVideo(defaultVideoUrl, 'HD Fallback Stream')) return;
+      if (await tryPixabay(shortKeywords)) return;
+      if (await tryPixabay('people motion')) return;
+      if (await tryPixabay('nature')) return;
+
+      // Model 2: Mixkit free stock videos (no auth, direct CDN MP4)
+      const mixkitVideos = [
+        'https://assets.mixkit.co/videos/preview/mixkit-young-woman-talking-on-a-video-call-with-a-laptop-43892-large.mp4',
+        'https://assets.mixkit.co/videos/preview/mixkit-forest-stream-in-the-sunlight-529-large.mp4',
+        'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-traffic-at-night-11-large.mp4',
+        'https://assets.mixkit.co/videos/preview/mixkit-sunset-over-the-sea-1089-large.mp4',
+      ];
+      const mixkitUrl = mixkitVideos[Number(seed) % mixkitVideos.length];
+      if (await sendVideo(mixkitUrl, 'Mixkit Free Stock Video')) return;
 
       response.writeHead(500); response.end('Video stream failed');
       return;
     }
+
 
     // 100% FREE REAL MALE & FEMALE NEURAL AI VOICE GENERATOR (/api/tts)
     if (request.method === 'GET' && url.pathname === '/api/tts') {
