@@ -514,7 +514,7 @@ app.get(["/video", "/api/video"], async (req, res) => {
   async function streamVideo(url, providerName, headers = {}) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 7000);
+      const timer = setTimeout(() => controller.abort(), 20000); // AI models need up to 20s
       const vidRes = await fetch(url, { signal: controller.signal, headers });
       clearTimeout(timer);
 

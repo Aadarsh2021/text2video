@@ -140,30 +140,33 @@ function enrichScenes(parsed, sceneDuration) {
 
 // ⚡ KEYLESS FREE AI TIER 1: Pollinations Keyless Engine (100% Free, NO API KEY NEEDED)
 async function generateWithPollinationsText(requestData) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 18_000);
   const start = Date.now();
   const { sceneDuration } = buildScriptPrompt(requestData);
+  const userConcept = String(requestData.prompt || '').trim();
+  const sysInstruction = `Output strict JSON matching schema: {"title":"","subjectCharacter":"","targetDuration":30,"hook":"","caption":"","hashtags":["#reels"],"scenes":[{"sceneNumber":1,"visual":"15-word visual prompt","narration":"hinglish text","spokenNarration":"hindi text","onScreen":"badge","duration":7}]}`;
 
-  try {
-    const userConcept = String(requestData.prompt || '').trim();
-    const sysInstruction = `Output strict JSON matching schema: {"title":"","subjectCharacter":"","targetDuration":30,"hook":"","caption":"","hashtags":["#reels"],"scenes":[{"sceneNumber":1,"visual":"15-word visual prompt","narration":"hinglish text","spokenNarration":"hindi text","onScreen":"badge","duration":7}]}`;
-    const encodedQuery = encodeURIComponent(`${sysInstruction}\nUser concept: "${userConcept}"`);
-    const getUrl = `https://text.pollinations.ai/${encodedQuery}?json=true`;
-
-    const res = await fetch(getUrl, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (res.ok) {
-      const rawText = await res.text();
-      const match = rawText.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = enrichScenes(JSON.parse(match[0]), sceneDuration);
-        return { success: true, provider: 'Pollinations Keyless Free AI ⚡', model: 'pollinations-keyless', latencyMs: Date.now() - start, rawOutput: rawText, data: parsed };
+  // Retry up to 2 times with 1s backoff
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
+    try {
+      const encodedQuery = encodeURIComponent(`${sysInstruction}\nUser concept: "${userConcept}"`);
+      const getUrl = `https://text.pollinations.ai/${encodedQuery}?json=true&seed=${Date.now()}`;
+      const res = await fetch(getUrl, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      clearTimeout(timer);
+      if (res.ok) {
+        const rawText = await res.text();
+        const match = rawText.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = enrichScenes(JSON.parse(match[0]), sceneDuration);
+          return { success: true, provider: 'Pollinations Keyless Free AI ⚡', model: 'pollinations-keyless', latencyMs: Date.now() - start, rawOutput: rawText, data: parsed };
+        }
       }
+    } catch (e) {
+      clearTimeout(timer);
+      console.warn(`Pollinations attempt ${attempt} error:`, e.message);
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
     }
-  } catch (e) {
-    console.warn('Pollinations Keyless GET error:', e.message);
-  } finally {
-    clearTimeout(timer);
   }
   throw new Error('Pollinations Keyless unavailable');
 }
@@ -532,7 +535,8 @@ async function handleServerRequest(request, response) {
       async function sendVideo(urlStr, providerName, reqHeaders = {}) {
         try {
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 7000);
+          // Increased to 20s — AI video generation models need more time
+          const timer = setTimeout(() => controller.abort(), 20000);
           const vidRes = await fetch(urlStr, { signal: controller.signal, headers: reqHeaders });
           clearTimeout(timer);
           if (vidRes.ok) {
@@ -664,27 +668,34 @@ async function handleServerRequest(request, response) {
       const voiceKey = `${gender === 'Female' ? 'Female' : 'Male'}_${langParam === 'en' ? 'en' : 'hi'}`;
       const voiceName = VOICE_MAP[voiceKey] || 'hi-IN-MadhurNeural';
 
-      try {
-        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'edge-tts-'));
-        const tts = new MsEdgeTTS();
-        await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_160KBITRATE_MONO_MP3);
-        const fileResult = await tts.toFile(tmpDir, cleanNarration);
-        const finalBuffer = await fs.readFile(fileResult.audioFilePath);
-        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
+      // Retry Edge TTS up to 3 times (stream can close early on first attempt)
+      let ttsSuccess = false;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `edge-tts-${attempt}-`));
+          const tts = new MsEdgeTTS();
+          await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_160KBITRATE_MONO_MP3);
+          const fileResult = await tts.toFile(tmpDir, cleanNarration);
+          const finalBuffer = await fs.readFile(fileResult.audioFilePath);
+          await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
 
-        if (finalBuffer && finalBuffer.length > 0) {
-          response.writeHead(200, {
-            'Content-Type': 'audio/mpeg',
-            'Content-Length': finalBuffer.length,
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'public, max-age=86400'
-          });
-          response.end(finalBuffer);
-          return;
+          if (finalBuffer && finalBuffer.length > 0) {
+            response.writeHead(200, {
+              'Content-Type': 'audio/mpeg',
+              'Content-Length': finalBuffer.length,
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=86400'
+            });
+            response.end(finalBuffer);
+            ttsSuccess = true;
+            break;
+          }
+        } catch (err) {
+          console.warn(`Edge Neural TTS attempt ${attempt} failed:`, err.message);
+          if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
         }
-      } catch (err) {
-        console.warn('Edge Neural TTS Error, using fallback:', err.message);
       }
+      if (ttsSuccess) return;
 
       // Fallback Google Translate TTS
       try {
