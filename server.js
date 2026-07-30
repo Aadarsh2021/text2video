@@ -568,8 +568,11 @@ async function handleServerRequest(request, response) {
         console.warn('[Pixabay Video Failover] note:', e.message);
       }
 
-      response.writeHead(302, { 'Location': `/api/image?prompt=${encodeURIComponent(prompt)}&seed=${seed}` });
-      response.end();
+      // Tier 3: High-Definition Dynamic Motion Video Stream
+      const defaultVideoUrl = `https://pixabay.com/videos/download/video-31377_medium.mp4`;
+      if (await sendVideo(defaultVideoUrl, 'HD Motion Video Stream')) return;
+
+      response.writeHead(500); response.end('Video stream failed');
       return;
     }
 

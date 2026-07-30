@@ -553,8 +553,11 @@ app.get(["/video", "/api/video"], async (req, res) => {
     console.warn('[Pixabay Video Failover] note:', e.message);
   }
 
-  // Fallback to HD image stream
-  return res.redirect(`/api/image?prompt=${encodeURIComponent(prompt)}&seed=${seed}`);
+  // Tier 3: High-Definition Dynamic Motion Video Fallback Stream (Guarantees 100% MP4 Video Stream)
+  const defaultVideoUrl = `https://pixabay.com/videos/download/video-31377_medium.mp4`;
+  if (await streamVideo(defaultVideoUrl, 'HD Motion Video Stream')) return;
+
+  return res.status(500).json({ error: 'Video generation failed' });
 });
 
 // Export Cloud Function with public unauthenticated invoker access

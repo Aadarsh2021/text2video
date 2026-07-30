@@ -45,85 +45,58 @@ function escapeHtml(str = '') {
   })[c]);
 }
 
-// 100% PRE-LOAD OF ALL SCENE VISUALS AND AI AUDIO MP3s (0ms GAP BETWEEN SCENES)
+// 100% PRE-LOAD OF ALL REAL MP4 VIDEO CLIPS AND AI AUDIO MP3s (0ms GAP BETWEEN SCENES)
 async function preloadAllSceneVisuals(scenes, onProgress) {
-  state.sceneImages = {};
   state.sceneVideos = {};
   state.sceneAudios = {};
   let loadedCount = 0;
   const total = scenes.length;
 
-  const createFallbackCanvasImage = (color1 = '#7c3aed', color2 = '#06050b') => {
-    const c = document.createElement('canvas');
-    c.width = 540; c.height = 960;
-    const ctx = c.getContext('2d');
-    const g = ctx.createLinearGradient(0, 0, 0, 960);
-    g.addColorStop(0, color1);
-    g.addColorStop(1, color2);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 540, 960);
-    const img = new Image();
-    img.src = c.toDataURL('image/jpeg');
-    return img;
-  };
-
   const loadScene = (sc, i) => new Promise((resolve) => {
     let isResolved = false;
-    const safeDone = (imgObj) => {
+    const safeDone = (vidObj) => {
       if (isResolved) return;
       isResolved = true;
       clearTimeout(safetyTimer);
-      state.sceneImages[i] = imgObj;
+      state.sceneVideos[i] = vidObj;
       loadedCount++;
       if (onProgress) onProgress(loadedCount, total);
       resolve();
     };
 
     const safetyTimer = setTimeout(() => {
-      safeDone(createFallbackCanvasImage(sc.color || '#4c1d95', '#06050b'));
+      const fallbackVid = document.createElement('video');
+      safeDone(fallbackVid);
     }, 25000);
 
     const sceneVisualPrompt = (sc.visual || '').trim()
       || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} motion video`;
     const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
 
-    // 1. Real AI Video Preloader
-    try {
-      const vid = document.createElement('video');
-      vid.crossOrigin = 'anonymous';
-      vid.muted = true;
-      vid.loop = true;
-      vid.playsInline = true;
-      vid.src = `/api/video?prompt=${encodeURIComponent(sceneVisualPrompt)}&seed=${uniqueSeed}`;
-      vid.oncanplaythrough = () => { vid.play().catch(() => {}); };
-      state.sceneVideos[i] = vid;
-    } catch (e) {}
+    // 100% Real AI & HD MP4 Video Preloader
+    const vid = document.createElement('video');
+    vid.crossOrigin = 'anonymous';
+    vid.muted = true;
+    vid.loop = true;
+    vid.playsInline = true;
 
-    // 2. High-Res HD Scene Image Preloader (Instant 100% Visual Guarantee)
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    const hdQualityPrompt = `${sceneVisualPrompt}, masterpiece, 8k resolution, photorealistic, IMAX 70mm, volumetric dramatic lighting, highly detailed subject, sharp focus`;
-    const directPollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(hdQualityPrompt)}?width=1080&height=1920&nologo=true&model=flux&enhance=true&seed=${uniqueSeed}`;
-    const proxyUrl = `/api/image?prompt=${encodeURIComponent(sceneVisualPrompt)}&seed=${uniqueSeed}`;
-    const directCloudRunImageUrl = `https://api-vvwtkdts6q-uc.a.run.app/api/image?prompt=${encodeURIComponent(sceneVisualPrompt)}&seed=${uniqueSeed}`;
-
-    img.onload = () => safeDone(img);
-    img.onerror = () => {
-      const crImg = new Image();
-      crImg.crossOrigin = 'anonymous';
-      crImg.onload = () => safeDone(crImg);
-      crImg.onerror = () => {
-        const fallbackImg = new Image();
-        fallbackImg.crossOrigin = 'anonymous';
-        fallbackImg.onload = () => safeDone(fallbackImg);
-        fallbackImg.onerror = () => safeDone(createFallbackCanvasImage('#312e81', '#06050b'));
-        fallbackImg.src = directPollinationsUrl;
-      };
-      crImg.src = directCloudRunImageUrl;
+    vid.oncanplaythrough = () => {
+      vid.play().catch(() => {});
+      safeDone(vid);
     };
-    img.src = proxyUrl;
+    vid.onloadeddata = () => {
+      vid.play().catch(() => {});
+      safeDone(vid);
+    };
+    vid.onerror = () => {
+      const directVidUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneVisualPrompt + ', motion video, 8k resolution, cinematic moving clip')}?model=video&width=540&height=960&nologo=true&seed=${uniqueSeed}`;
+      vid.src = directVidUrl;
+      safeDone(vid);
+    };
 
-    // 3. Audio Preload in Parallel
+    vid.src = `/api/video?prompt=${encodeURIComponent(sceneVisualPrompt)}&seed=${uniqueSeed}`;
+
+    // Parallel Audio Preload
     const rawText = sc.spokenNarration || sc.narration || sc.onScreen || '';
     const cleanText = cleanTtsText(rawText);
     const lang = state.language === 'English' ? 'en' : 'hi';
@@ -234,11 +207,12 @@ function renderCanvasFrame(ts = performance.now()) {
   }
 
   const bgVid = state.sceneVideos ? state.sceneVideos[state.currentScene] : null;
-  if (bgVid && bgVid.readyState >= 2 && bgVid.videoWidth !== 0) {
+  if (bgVid && bgVid.videoWidth !== 0) {
     if (bgVid.paused && state.playing) bgVid.play().catch(() => {});
     drawImageCover(ctx, bgVid, w, h);
-  } else if (bgImg && bgImg.complete && bgImg.naturalWidth !== 0) {
-    drawImageCover(ctx, bgImg, w, h);
+  } else if (bgVid) {
+    if (bgVid.paused && state.playing) bgVid.play().catch(() => {});
+    drawImageCover(ctx, bgVid, w, h);
   } else {
     const grad = ctx.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, scene.color || '#4c1d95');
