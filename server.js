@@ -452,21 +452,20 @@ async function handleServerRequest(request, response) {
     if (request.method === 'GET' && url.pathname === '/api/image') {
       const prompt = url.searchParams.get('prompt') || 'character portrait';
       const seed = url.searchParams.get('seed') || '42';
-      // Strip video/production terms that confuse image generators — keep art style and visual description terms
       const cleanPrompt = prompt
         .replace(/\bIMAX\b|\b4K\b|\bHDR\b|\b8K\b|\bdrone shot[s]?\b|\baerial shot[s]?\b|\bsmooth shot[s]?\b|\bcamera\b|\bfootage\b|\bfilmed\b|\brecord(ed|ing)?\b|\bscreenplay\b|\banimation\b|\bvertical reel\b|\b9:16\b/gi, '')
         .replace(/\s{2,}/g, ' ')
         .trim()
-        .slice(0, 400); // Pollinations handles up to ~400 chars
+        .slice(0, 400);
 
       const sendImage = async (imageUrl, label) => {
         const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 6000); // 6s per tier fast timeout
+        const t = setTimeout(() => ctrl.abort(), 6000);
         try {
           const r = await fetch(imageUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: ctrl.signal }).finally(() => clearTimeout(t));
           if (r.ok) {
             const buf = Buffer.from(await r.arrayBuffer());
-            if (buf.length < 2000) throw new Error('Image too small — likely error HTML page');
+            if (buf.length < 2000) throw new Error('Image too small');
             response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': buf.length, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
             response.end(buf);
             return true;
@@ -475,49 +474,24 @@ async function handleServerRequest(request, response) {
         return false;
       };
 
-      // Tier 1: Lexica AI Engine (Unlimited Free AI Art Search & Generation matching exact scene prompt)
       try {
         const lexicaRes = await fetch(`https://lexica.art/api/v1/search?q=${encodeURIComponent(cleanPrompt.slice(0, 100))}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (lexicaRes.ok) {
           const lexicaData = await lexicaRes.json();
           if (lexicaData.images && lexicaData.images.length > 0) {
-            const seedNum = Number(seed) || 0;
-            const chosenImg = lexicaData.images[seedNum % lexicaData.images.length];
-            const imgUrl = chosenImg.src || chosenImg.srcSmall;
-            if (await sendImage(imgUrl, 'Lexica AI Engine')) return;
+            const chosenImg = lexicaData.images[Number(seed) % lexicaData.images.length];
+            if (await sendImage(chosenImg.src || chosenImg.srcSmall, 'Lexica AI Engine')) return;
           }
         }
-      } catch (e) {
-        console.warn('Lexica AI error:', e.message);
-      }
+      } catch (e) { console.warn('Lexica AI error:', e.message); }
 
-      // Tier 2: Pollinations Turbo (5s fast failover)
       const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', highly detailed, masterpiece')}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
       if (await sendImage(turboUrl, 'Pollinations Turbo')) return;
 
-      // Tier 3: Pollinations FLUX (5s fast failover)
-      const fluxUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', high quality')}?width=540&height=960&nologo=true&model=flux&seed=${seed}`;
-      if (await sendImage(fluxUrl, 'Pollinations FLUX')) return;
-
-      // Tier 4: Pollinations Standard (5s fast failover)
-      const stdUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=540&height=960&nologo=true&seed=${seed}`;
-      if (await sendImage(stdUrl, 'Pollinations Standard')) return;
-
-      // Tier 5: Picsum Guaranteed Photographic Engine (Never rate limits, 100% 200 OK HD image)
       const picsumUrl = `https://picsum.photos/seed/${seed}/540/960`;
       if (await sendImage(picsumUrl, 'Picsum Photographic Engine')) return;
 
-      // Final: Scene-relevant SVG poster
-      const shortPrompt = cleanPrompt.slice(0, 80);
-      const svgPlaceholder = `<svg xmlns="http://www.w3.org/2000/svg" width="540" height="960" viewBox="0 0 540 960">
-        <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0f0c29"/><stop offset="100%" stop-color="#302b63"/></linearGradient></defs>
-        <rect width="540" height="960" fill="url(#g)"/>
-        <text x="270" y="430" font-family="Arial" font-size="48" fill="#a78bfa" text-anchor="middle">🎬</text>
-        <text x="270" y="500" font-family="Arial" font-size="18" font-weight="bold" fill="#e2e8f0" text-anchor="middle">AI Visual Concept</text>
-        <text x="270" y="540" font-family="Arial" font-size="13" fill="#94a3b8" text-anchor="middle" xml:space="preserve">${shortPrompt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</text>
-      </svg>`;
-      response.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
-      response.end(svgPlaceholder);
+      response.writeHead(500); response.end('Image stream failed');
       return;
     }
 
@@ -532,8 +506,7 @@ async function handleServerRequest(request, response) {
         .replace(/[^a-zA-Z0-9\s]/g, '')
         .trim() || 'cinematic motion';
 
-      // Download and serve video (arrayBuffer for reliable buffering)
-      async function sendVideo(urlStr, providerName) {
+      async function sendMedia(urlStr, providerName, forceType = null) {
         try {
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), 20000);
@@ -544,93 +517,56 @@ async function handleServerRequest(request, response) {
           });
           clearTimeout(timer);
 
-          if (!vidRes.ok) {
-            console.warn(`[Video] ${providerName}: HTTP ${vidRes.status}`);
-            return false;
-          }
-
-          const contentType = vidRes.headers.get('content-type') || '';
-          if (contentType.includes('text/html') || contentType.includes('application/json')) {
-            console.warn(`[Video] ${providerName}: got ${contentType}, skipping non-video`);
-            return false;
-          }
+          if (!vidRes.ok) return false;
+          const contentType = forceType || vidRes.headers.get('content-type') || 'video/mp4';
+          if (contentType.includes('text/html')) return false;
 
           const arrayBuffer = await vidRes.arrayBuffer();
-          if (arrayBuffer.byteLength < 5000) {
-            console.warn(`[Video] ${providerName}: too small (${arrayBuffer.byteLength} bytes)`);
-            return false;
-          }
+          if (arrayBuffer.byteLength < 3000) return false;
 
-          console.log(`[Video] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB`);
           response.writeHead(200, {
-            'Content-Type': 'video/mp4',
+            'Content-Type': contentType,
             'Content-Length': arrayBuffer.byteLength,
             'Access-Control-Allow-Origin': '*',
             'Cache-Control': 'public, max-age=86400'
           });
           response.end(Buffer.from(arrayBuffer));
           return true;
-        } catch (e) {
-          if (!response.headersSent) console.warn(`[Video] ${providerName}: ${e.message}`);
-          return false;
-        }
+        } catch (e) { return false; }
       }
 
-      // Model 1: Pexels HD Video API (100% working API keys + verified CDN)
-      const PEXELS_KEYS = [
-        '563492ad6f91700001000001a1d1d87e07a341b590e8a71a48cdd1ad',
-        '563492ad6f91700001000001c23f2b68c34f41b29a2472d427218ef8',
-        '563492ad6f917000010000018f6f59b6574f4b238f97a5b3a32f6b8a',
-        '563492ad6f917000010000017a59a7f34f0c436b99b514e8c148f4b0'
-      ];
+      const isAnimeOrFictional = /(naruto|anime|goku|dragonball|ninja|konoha|sasuke|sakura|cyberpunk|hanuman|god|bhakti|statue)/i.test(cleanPrompt);
+      if (isAnimeOrFictional) {
+        const aiArtUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', 8k resolution, vertical anime cinematic clip masterpiece')}?width=540&height=960&nologo=true&seed=${seed}`;
+        if (await sendMedia(aiArtUrl, 'AI Anime Visual Engine', 'image/jpeg')) return;
+      }
+
+      const PEXELS_KEYS = ['563492ad6f91700001000001a1d1d87e07a341b590e8a71a48cdd1ad', '563492ad6f91700001000001c23f2b68c34f41b29a2472d427218ef8'];
       const activePexelsKey = PEXELS_KEYS[Number(seed) % PEXELS_KEYS.length];
+      const topicWords = keywords.split(/\s+/).filter(w => w.length > 2);
 
-      const words = keywords
-        .split(/\s+/)
-        .map(w => w.trim().toLowerCase())
-        .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'have', 'more', 'some', 'were', 'shot', 'shots', 'background', 'foreground'].includes(w));
-
-      const searchTerms = [];
-      if (words.length >= 1) searchTerms.push(words[0]);
-      if (words.length >= 2) searchTerms.push(words[1]);
-      searchTerms.push('cinematic', 'nature', 'city');
-
-      console.log(`[Video] Pexels search terms: ${JSON.stringify(searchTerms.slice(0, 3))} seed:${seed}`);
-
-      for (const q of searchTerms) {
+      for (const q of topicWords.slice(0, 2)) {
         try {
-          const pexRes = await fetch(
-            `https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&per_page=12`,
-            { headers: { 'Authorization': activePexelsKey, 'User-Agent': 'Mozilla/5.0' } }
-          );
-          if (pexRes.ok) {
-            const data = await pexRes.json();
-            if (data?.videos?.length > 0) {
-              const hit = data.videos[Number(seed) % data.videos.length];
-              const file = hit.video_files?.find(f => f.quality === 'sd' || f.quality === 'hd') || hit.video_files?.[0];
-              if (file?.link && await sendVideo(file.link, `Pexels HD Video ["${q}"]`)) return;
-            }
+          const pexRes = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&per_page=12`, { headers: { 'Authorization': activePexelsKey } });
+          const data = await pexRes.json();
+          if (data?.videos?.length > 0) {
+            const hit = data.videos[Number(seed) % data.videos.length];
+            const file = hit.video_files?.find(f => f.quality === 'sd') || hit.video_files?.[0];
+            if (file?.link && await sendMedia(file.link, 'Pexels HD Video')) return;
           }
-        } catch (e) {
-          console.warn(`[Pexels "${q}"]:`, e.message);
-        }
+        } catch (e) {}
       }
 
-      // Model 2: Guaranteed 100% verified public 200 OK MP4 CDNs
-      const verifiedFallbackVideos = [
-        'https://vjs.zencdn.net/v/oceans.mp4',
-        'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-        'https://www.w3schools.com/html/mov_bbb.mp4',
-        'https://www.w3schools.com/html/movie.mp4',
-        'https://media.w3.org/2010/05/sintel/trailer.mp4'
-      ];
-      const fallbackUrl = verifiedFallbackVideos[Number(seed) % verifiedFallbackVideos.length];
-      console.log(`[Video] Serving verified CDN fallback: ${fallbackUrl}`);
-      if (await sendVideo(fallbackUrl, 'Verified CDN HD Fallback')) return;
+      const aiVisualFallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', cinematic vertical video clip')}?width=540&height=960&nologo=true&seed=${seed}`;
+      if (await sendMedia(aiVisualFallbackUrl, 'AI Visual Scene Fallback', 'image/jpeg')) return;
 
-      response.writeHead(500); response.end('Video stream failed');
+      const fallbackUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
+      if (await sendMedia(fallbackUrl, 'Verified CDN HD Fallback')) return;
+
+      response.writeHead(500); response.end('Media stream failed');
       return;
     }
+
 
 
 

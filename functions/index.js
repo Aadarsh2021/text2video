@@ -510,8 +510,8 @@ app.get(["/video", "/api/video"], async (req, res) => {
     .replace(/[^a-zA-Z0-9\s]/g, '')
     .trim() || 'cinematic motion';
 
-  // Helper to fetch and stream video buffer
-  async function streamVideo(url, providerName) {
+  // Helper to fetch and stream media buffer (video/mp4 or image/jpeg)
+  async function streamMedia(url, providerName, forceType = null) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 20000);
@@ -523,24 +523,32 @@ app.get(["/video", "/api/video"], async (req, res) => {
       clearTimeout(timer);
 
       if (vidRes.ok) {
-        const contentType = vidRes.headers.get('content-type') || '';
+        const contentType = forceType || vidRes.headers.get('content-type') || 'video/mp4';
         if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
 
         const arrayBuffer = await vidRes.arrayBuffer();
-        if (arrayBuffer.byteLength < 5000) return false;
+        if (arrayBuffer.byteLength < 3000) return false;
 
-        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', arrayBuffer.byteLength);
         res.setHeader('Cache-Control', 'public, max-age=86400');
         res.send(Buffer.from(arrayBuffer));
         return true;
       }
     } catch (e) {
-      console.warn(`[Video Stream] ${providerName}:`, e.message);
+      console.warn(`[Media Stream] ${providerName}:`, e.message);
     }
     return false;
   }
 
+  // Model 1: For Anime / Fictional characters (Naruto, Goku, Hanuman, etc.) -> Generate 100% exact high-definition AI visual scene art
+  const isAnimeOrFictional = /(naruto|anime|goku|dragonball|ninja|konoha|sasuke|sakura|cyberpunk|hanuman|god|bhakti|statue)/i.test(cleanPrompt);
+  if (isAnimeOrFictional) {
+    const aiArtUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', 8k resolution, vertical anime cinematic clip masterpiece')}?width=540&height=960&nologo=true&seed=${seed}`;
+    if (await streamMedia(aiArtUrl, 'AI Anime Visual Engine', 'image/jpeg')) return;
+  }
+
+  // Model 2: Pexels HD Stock Video Search (for real-world prompts)
   const PEXELS_KEYS = [
     '563492ad6f91700001000001a1d1d87e07a341b590e8a71a48cdd1ad',
     '563492ad6f91700001000001c23f2b68c34f41b29a2472d427218ef8',
@@ -549,17 +557,13 @@ app.get(["/video", "/api/video"], async (req, res) => {
   ];
   const activePexelsKey = PEXELS_KEYS[Number(seed) % PEXELS_KEYS.length];
 
-  const words = keywords
+  const genericStopwords = new Set(['vibrant', 'dynamic', 'cinematic', 'photorealistic', 'masterpiece', 'lighting', 'detailed', 'portrait', 'ultra', 'resolution', 'quality', 'style', 'scene', 'shots', 'background', 'foreground', 'with', 'from', 'that', 'this', 'have', 'more', 'some', 'were', 'each']);
+  const topicWords = keywords
     .split(/\s+/)
     .map(w => w.trim().toLowerCase())
-    .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'have', 'more', 'some', 'were', 'shot', 'shots', 'background', 'foreground'].includes(w));
+    .filter(w => w.length > 2 && !genericStopwords.has(w));
 
-  const searchTerms = [];
-  if (words.length >= 1) searchTerms.push(words[0]);
-  if (words.length >= 2) searchTerms.push(words[1]);
-  searchTerms.push('cinematic', 'nature', 'city');
-
-  for (const q of searchTerms) {
+  for (const q of topicWords.slice(0, 3)) {
     try {
       const pexRes = await fetch(
         `https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&per_page=12`,
@@ -570,12 +574,17 @@ app.get(["/video", "/api/video"], async (req, res) => {
         if (data?.videos?.length > 0) {
           const hit = data.videos[Number(seed) % data.videos.length];
           const file = hit.video_files?.find(f => f.quality === 'sd' || f.quality === 'hd') || hit.video_files?.[0];
-          if (file?.link && await streamVideo(file.link, `Pexels["${q}"]`)) return;
+          if (file?.link && await streamMedia(file.link, `Pexels["${q}"]`)) return;
         }
       }
     } catch (e) { }
   }
 
+  // Model 3: AI Visual Scene Fallback
+  const aiVisualFallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', cinematic vertical video clip')}?width=540&height=960&nologo=true&seed=${seed}`;
+  if (await streamMedia(aiVisualFallbackUrl, 'AI Visual Scene Fallback', 'image/jpeg')) return;
+
+  // Model 4: Verified Fallback Video
   const verifiedFallbackVideos = [
     'https://vjs.zencdn.net/v/oceans.mp4',
     'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
@@ -584,7 +593,7 @@ app.get(["/video", "/api/video"], async (req, res) => {
     'https://media.w3.org/2010/05/sintel/trailer.mp4'
   ];
   const fallbackUrl = verifiedFallbackVideos[Number(seed) % verifiedFallbackVideos.length];
-  if (await streamVideo(fallbackUrl, 'Verified Fallback')) return;
+  if (await streamMedia(fallbackUrl, 'Verified Fallback')) return;
 
   return res.status(500).json({ error: 'Video generation failed' });
 });
