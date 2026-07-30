@@ -518,24 +518,54 @@ async function handleServerRequest(request, response) {
       return;
     }
 
-    // REAL AI VIDEO GENERATOR ENDPOINT (/api/video)
+    // REAL AI & CINEMATIC HD VIDEO GENERATOR ENDPOINT (/api/video)
     if (request.method === 'GET' && url.pathname === '/api/video') {
       const prompt = url.searchParams.get('prompt') || 'cinematic motion';
       const seed = url.searchParams.get('seed') || Math.floor(Math.random() * 10000);
-      const videoPrompt = `${prompt}, highly dynamic motion video, 8k resolution, cinematic moving subject, photorealistic video clip, fluid motion`;
+      const cleanPrompt = String(prompt).slice(0, 300);
 
+      const keywords = cleanPrompt
+        .replace(/8k|resolution|cinematic|photorealistic|masterpiece|lighting|detailed|portrait|ultra|hd/gi, '')
+        .replace(/[^a-zA-Z0-9\s]/g, '')
+        .trim() || 'cinematic motion';
+
+      async function sendVideo(urlStr, providerName) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 7000);
+          const vidRes = await fetch(urlStr, { signal: controller.signal });
+          clearTimeout(timer);
+          if (vidRes.ok) {
+            const contentType = vidRes.headers.get('content-type') || 'video/mp4';
+            const arrayBuffer = await vidRes.arrayBuffer();
+            response.writeHead(200, { 'Content-Type': contentType, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
+            response.end(Buffer.from(arrayBuffer));
+            return true;
+          }
+        } catch (e) {
+          console.warn(`[Server Video Stream] ${providerName} note:`, e.message);
+        }
+        return false;
+      }
+
+      // Tier 1: Pollinations Video
+      const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', motion video, 8k resolution, cinematic moving clip')}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
+      if (await sendVideo(videoUrl, 'Pollinations Video Model')) return;
+
+      // Tier 2: Pixabay HD Video Search Engine
       try {
-        const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(videoPrompt)}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
-        const vidRes = await fetch(videoUrl);
-        if (vidRes.ok) {
-          const contentType = vidRes.headers.get('content-type') || 'video/mp4';
-          const buffer = await vidRes.arrayBuffer();
-          response.writeHead(200, { 'Content-Type': contentType, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
-          response.end(Buffer.from(buffer));
-          return;
+        const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
+        const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(keywords.slice(0, 35))}&per_page=10&video_type=film`);
+        if (pxaRes.ok) {
+          const data = await pxaRes.json();
+          if (data && data.hits && data.hits.length > 0) {
+            const hit = data.hits[Number(seed) % data.hits.length];
+            const mp4Url = hit.videos?.medium?.url || hit.videos?.small?.url || hit.videos?.tiny?.url;
+            if (mp4Url && await sendVideo(mp4Url, 'Pixabay HD Video Engine')) return;
+          }
         }
       } catch (e) {
-        console.warn('Server video stream error:', e.message);
+        console.warn('[Pixabay Video Failover] note:', e.message);
       }
 
       response.writeHead(302, { 'Location': `/api/image?prompt=${encodeURIComponent(prompt)}&seed=${seed}` });
