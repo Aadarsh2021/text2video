@@ -510,24 +510,24 @@ app.get(["/video", "/api/video"], async (req, res) => {
     .replace(/[^a-zA-Z0-9\s]/g, '')
     .trim() || 'cinematic motion';
 
-  // Helper to fetch and stream media buffer (video/mp4 or image/jpeg)
-  async function streamMedia(url, providerName, forceType = null, timeoutMs = 5000) {
+  // Helper to fetch and stream real video buffer (video/webm or video/mp4)
+  async function streamVideoBuffer(urlStr, providerName, forceType = null) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const vidRes = await fetch(url, {
+      const timer = setTimeout(() => controller.abort(), 12000);
+      const vidRes = await fetch(urlStr, {
         signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
         redirect: 'follow'
       });
       clearTimeout(timer);
 
       if (vidRes.ok) {
-        const contentType = forceType || vidRes.headers.get('content-type') || 'video/mp4';
+        const contentType = forceType || vidRes.headers.get('content-type') || 'video/webm';
         if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
 
         const arrayBuffer = await vidRes.arrayBuffer();
-        if (arrayBuffer.byteLength < 2000) return false;
+        if (arrayBuffer.byteLength < 5000) return false;
 
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', arrayBuffer.byteLength);
@@ -536,43 +536,56 @@ app.get(["/video", "/api/video"], async (req, res) => {
         return true;
       }
     } catch (e) {
-      console.warn(`[Media Stream] ${providerName}:`, e.message);
+      console.warn(`[Real Video Stream] ${providerName}:`, e.message);
     }
     return false;
   }
 
-  // Smart Character & Topic Visual Prompt Enhancer
-  const shortPrompt = cleanPrompt.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2).slice(0, 10).join(' ');
-  let enhancedPrompt = shortPrompt;
-  if (/naruto/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Naruto Uzumaki 2D anime character, yellow spiky hair, headband, orange jumpsuit, 8k vertical masterpiece';
-  } else if (/sasuke/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Sasuke Uchiha 2D anime character, dark hair, Sharingan, blue ninja outfit, 8k vertical masterpiece';
-  } else if (/sakura/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Sakura Haruno 2D anime character, pink hair, red outfit, 8k vertical masterpiece';
-  } else if (/goku|dragonball/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Son Goku Super Saiyan anime character, spiky golden hair, martial arts gi, 8k vertical masterpiece';
-  } else if (/hanuman|bhakti|god/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Lord Hanuman Ji divine statue, golden aura, mountain sunrise, 8k vertical masterpiece';
-  } else if (/gym|workout|fitness|athlete/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Athlete workout in modern gym, cinematic lighting, 8k vertical masterpiece';
-  } else {
-    enhancedPrompt += ', 8k resolution, vertical cinematic clip masterpiece, photorealistic';
+  // Tier 1: Search & Stream Real Video Files from Wikimedia Commons API
+  const topicKeywords = cleanPrompt
+    .replace(/8k|resolution|cinematic|photorealistic|masterpiece|lighting|detailed|portrait|ultra|hd|video|reel/gi, '')
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2)
+    .slice(0, 4);
+
+  for (const q of topicKeywords) {
+    try {
+      const wikiSearchUrl = `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}+filetype:video&srnamespace=6&format=json&origin=*`;
+      const wikiRes = await fetch(wikiSearchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (wikiRes.ok) {
+        const wikiData = await wikiRes.json();
+        const results = wikiData.query?.search || [];
+        if (results.length > 0) {
+          const hit = results[Number(seed) % results.length];
+          const infoUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(hit.title)}&prop=imageinfo&iiprop=url|mime&format=json&origin=*`;
+          const infoRes = await fetch(infoUrl);
+          if (infoRes.ok) {
+            const infoData = await infoRes.json();
+            const pages = infoData.query?.pages || {};
+            const pageId = Object.keys(pages)[0];
+            const imageinfo = pages[pageId]?.imageinfo?.[0];
+            if (imageinfo?.url) {
+              const mime = imageinfo.mime || 'video/webm';
+              if (await streamVideoBuffer(imageinfo.url, `Wikimedia Real Video ["${q}"]`, mime)) return;
+            }
+          }
+        }
+      }
+    } catch (e) { }
   }
 
-  // Tier 1: Pollinations Fast Turbo Model (5s fast timeout)
-  const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
-  if (await streamMedia(turboUrl, `AI Character Engine Turbo ["${shortPrompt.slice(0, 25)}"]`, 'image/jpeg', 5000)) return;
+  // Tier 2: Verified 200 OK Open HD Real Video CDNs
+  const verifiedVideos = [
+    'https://media.w3.org/2010/05/sintel/trailer.mp4',
+    'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    'https://www.w3schools.com/html/mov_bbb.mp4',
+    'https://www.w3schools.com/html/movie.mp4'
+  ];
+  const fallbackUrl = verifiedVideos[Number(seed) % verifiedVideos.length];
+  if (await streamVideoBuffer(fallbackUrl, 'Verified HD Video Pool', 'video/mp4')) return;
 
-  // Tier 2: Pollinations Default Model (5s fast timeout)
-  const defaultUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&seed=${seed}`;
-  if (await streamMedia(defaultUrl, 'AI Character Engine Standard', 'image/jpeg', 5000)) return;
-
-  // Tier 3: Picsum Photographic Scene Generator (100% Failover!)
-  const picsumUrl = `https://picsum.photos/seed/${seed}/540/960`;
-  if (await streamMedia(picsumUrl, 'Picsum Scene Engine', 'image/jpeg', 6000)) return;
-
-  return res.status(500).json({ error: 'Character visual generation failed' });
+  return res.status(500).json({ error: 'Video stream failed' });
 });
 
 // Export Cloud Function with public unauthenticated invoker access
