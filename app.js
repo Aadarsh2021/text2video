@@ -892,7 +892,6 @@ function cleanTtsText(rawText) {
     .replace(/%/g, ' प्रतिशत')
     .replace(/&/g, ' और ');
 
-  // Convert digits to Devanagari Hindi words for 100% smooth TTS pronunciation
   const numMap = {
     '15': 'पंद्रह', '30': 'तीस', '45': 'पैंतालीस', '60': 'साठ',
     '1': 'एक', '2': 'दो', '3': 'तीन', '4': 'चार', '5': 'पांच',
@@ -901,70 +900,6 @@ function cleanTtsText(rawText) {
   Object.keys(numMap).forEach(n => {
     cleaned = cleaned.replace(new RegExp('\\b' + n + '\\b', 'g'), numMap[n]);
   });
-
-  cleaned = cleaned
-    .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // If text is Hinglish/Hindi, convert Roman words to Devanagari Hindi
-  return convertHinglishToHindiDevanagari(cleaned);
-}
-
-// ─── NATURAL INDIAN VOICE SELECTION ENGINE ─────────────────────────────────────
-function getBestVoiceForLanguage(voices, gender, language, text) {
-  if (!voices || voices.length === 0) return null;
-
-  const isHindiText = language === 'Hindi' || language === 'Hinglish' || /[\u0900-\u097F]/.test(text);
-
-  if (isHindiText) {
-    // Filter STRICTLY for authentic Indian / Hindi voices ONLY
-    const strictHindiVoices = voices.filter(v => 
-      (v.lang && (v.lang.includes('hi') || v.lang.includes('IN'))) || 
-      /Hindi|हिन्दी|India/i.test(v.name)
-    );
-
-    // Reject any Western US/UK/AU voices
-    const nonWesternHindi = strictHindiVoices.filter(v => !/David|Mark|George|Zira|Hazel|Susan|Linda|Catherine|James|Richard/i.test(v.name));
-
-    if (nonWesternHindi.length > 0) {
-      if (gender === 'Male') {
-        return nonWesternHindi.find(v => /Male|Hemant|Ravi|Madhur|Prabhat/i.test(v.name) && !/Female|Kalpana|Heera|Zira|Google हिन्दी/i.test(v.name)) 
-            || nonWesternHindi.find(v => v.lang.includes('hi')) 
-            || nonWesternHindi[0];
-      } else {
-        return nonWesternHindi.find(v => /Female|Kalpana|Heera|Swara|Google/i.test(v.name)) || nonWesternHindi[0];
-      }
-    }
-
-    // If no Indian/Hindi voice installed on device, return NULL so browser uses native Google Indian Cloud Voice
-    return null;
-  } else {
-    // English language
-    if (gender === 'Male') {
-    }
-  }
-}
-
-function cleanTtsText(text) {
-  let cleaned = String(text || '')
-    .replace(/#\w+/g, '')
-    .replace(/[()[\]{}]/g, '')
-    .replace(/\bAI\b/gi, 'ए आई')
-    .replace(/\bVS\b/gi, 'वर्सेस')
-    .replace(/%/g, ' प्रतिशत')
-    .replace(/&/g, ' और ');
-
-  if (state.language === 'Hindi') {
-    const numMap = {
-      '15': 'पंद्रह', '30': 'तीस', '45': 'पैंतालीस', '60': 'साठ',
-      '1': 'एक', '2': 'दो', '3': 'तीन', '4': 'चार', '5': 'पांच',
-      '6': 'छह', '7': 'सात', '8': 'आठ', '9': 'नौ', '10': 'दस'
-    };
-    Object.keys(numMap).forEach(n => {
-      cleaned = cleaned.replace(new RegExp('\\b' + n + '\\b', 'g'), numMap[n]);
-    });
-  }
 
   return cleaned
     .replace(/[^a-zA-Z0-9\s.,!?\u0900-\u097F]/gi, ' ')
@@ -1063,7 +998,8 @@ function playStudioNaturalVoice(startSceneIdx) {
       state.sceneAudios[sceneIdx] = audio;
     }
 
-    audio.volume = state.volume;
+    audio.muted = false;
+    audio.volume = state.volume || 1.0;
     audio.currentTime = 0;
     state.currentAudio = audio;
 
@@ -1078,10 +1014,13 @@ function playStudioNaturalVoice(startSceneIdx) {
       speakWebSpeechFallback();
     };
 
-    audio.play().catch(e => {
-      console.warn('Audio play autoplay failure, trying WebSpeech:', e.message);
-      speakWebSpeechFallback();
-    });
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(e => {
+        console.warn('Audio play autoplay policy note:', e.message);
+        speakWebSpeechFallback();
+      });
+    }
   }
 
   function advanceNext() {
@@ -1252,14 +1191,34 @@ function initApp() {
     });
   });
 
-  // Ensure WebSpeech Audio is unlocked on first user interaction
+  // Master Web Audio & Speech Synthesis Unlock Engine for Browser Autoplay Policy
+  let webAudioCtx = null;
   const unlockAudio = () => {
+    try {
+      if (!webAudioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) webAudioCtx = new AudioContextClass();
+      }
+      if (webAudioCtx && webAudioCtx.state === 'suspended') {
+        webAudioCtx.resume();
+      }
+      if (webAudioCtx) {
+        const buf = webAudioCtx.createBuffer(1, 1, 22050);
+        const src = webAudioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(webAudioCtx.destination);
+        src.start(0);
+      }
+    } catch (e) {}
+
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.resume();
+      try {
+        window.speechSynthesis.resume();
+      } catch (e) {}
     }
   };
-  document.addEventListener('click', unlockAudio, { once: true });
-  document.addEventListener('touchstart', unlockAudio, { once: true });
+  document.addEventListener('click', unlockAudio);
+  document.addEventListener('touchstart', unlockAudio);
 
   el('generateVideoBtn')?.addEventListener('click', () => {
     unlockAudio();
