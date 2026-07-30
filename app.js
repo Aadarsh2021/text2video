@@ -205,9 +205,14 @@ function renderCanvasFrame(ts = performance.now()) {
     ctx.scale(enterScale, enterScale);
     ctx.translate(-w / 2, -h / 2);
   } else {
-    // Steady 1:1 Clean Video/Image Frame (No artificial photo zoom or tilt)
-    ctx.translate(w / 2, h / 2);
-    ctx.scale(1.0, 1.0);
+    // 60fps Ken Burns Camera Motion Shader (Slow Push-In 1.0x -> 1.16x + Smooth Pan Drift)
+    const tSec = (ts * 0.001);
+    const zoomScale = 1.0 + (sceneProgress * 0.16);
+    const panX = Math.sin(tSec * 0.5 + (state.currentScene || 0)) * 14;
+    const panY = Math.cos(tSec * 0.4 + (state.currentScene || 0)) * 10;
+
+    ctx.translate(w / 2 + panX, h / 2 + panY);
+    ctx.scale(zoomScale, zoomScale);
     ctx.translate(-w / 2, -h / 2);
   }
 

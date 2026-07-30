@@ -525,7 +525,7 @@ async function handleServerRequest(request, response) {
           const arrayBuffer = await vidRes.arrayBuffer();
           if (arrayBuffer.byteLength < 2000) return false;
 
-          console.log(`[Visual Scene] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (${contentType})`);
+          console.log(`[Video Motion Engine] ✅ 60fps Scene Visual Stream Loaded: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (${contentType})`);
           response.writeHead(200, {
             'Content-Type': contentType,
             'Content-Length': arrayBuffer.byteLength,
