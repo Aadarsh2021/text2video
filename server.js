@@ -83,31 +83,24 @@ CRITICAL CONCEPT UNDERSTANDING & DIRECTION (STRICT):
    - Target Duration: EXACTLY ${targetDuration} seconds (${sceneCount} scenes of ${sceneDuration}s each).
    - Scene Narration Length: EXACTLY 20 to 30 WORDS per scene (2-3 full descriptive sentences per scene). NEVER write short 5-word lines. Each scene narration must fill the entire ${sceneDuration} seconds of narration time continuously.
 
-3. 100% SCRIPT MATCHING (SELECTED LANGUAGE: "${language}"):
-   - IF LANGUAGE IS "Hindi":
-     * BOTH "narration" and "spokenNarration" MUST BE 100% IN DEVANAGARI HINDI SCRIPT (e.g. "मैं आज एक नए सफर पर निकला हूँ"). NEVER return Roman English text.
-   - IF LANGUAGE IS "English":
-     * BOTH "narration" and "spokenNarration" MUST BE IN ENGLISH (e.g. "Today I embark on a brand new journey").
+3. REAL CONTINUOUS SPOKEN CREATOR VOICEOVER (CRITICAL STRICT RULE):
+   - "narration" and "spokenNarration" MUST BE A REAL CONTINUOUS SPOKEN VOICEOVER (A professional Reels narrator speaking directly to the audience!).
+   - ABSOLUTE PROHIBITION: NEVER write third-person descriptive directions like "एक छात्र पढ़ रहा है", "यह दृश्य दिखाता है", "3D Pixar शैली", or "8K रिज़ॉल्यूशन"!
+   - NEVER put technical terms ("8K", "Pixar", "Resolute", "Scene 1") inside the narration text!
+   - Write engaging, dramatic, educational, or inspiring spoken lines that an Oscar-winning creator or top influencer would narrate!
+   - Example for "Class 2 Vocabulary": "आज हम कक्षा दो के सबसे सुंदर और नए शब्द सीखने वाले हैं, जो आपकी हिंदी को बहुत मज़ेदार और आसान बना देंगे!"
 
-4. VOICE GENDER & GRAMMAR ACCURACY:
+4. PURE ENGLISH VISUAL PROMPTS FOR AI VIDEO GENERATOR (STRICT):
+   - "visual" MUST ALWAYS BE WRITTEN 100% IN HIGHLY DETAILED DESCRIPTIVE ENGLISH! Video diffusion models do NOT understand Devanagari Hindi!
+   - Example: "A cheerful young 7-year-old Indian student in a bright modern classroom reading colorful vocabulary books, 8k cinematic lighting, photorealistic"
+   - NEVER write Hindi or Devanagari text inside the "visual" field!
+
+5. VOICE GENDER & GRAMMAR ACCURACY:
    - Selected Voice Gender: "${voiceGender}".
-   - If Male ("${voiceGender}" === "Male"): Use Male Hindi grammar ("Main kar raha hoon", "Main dekhta hoon", "Main gaya").
-   - If Female ("${voiceGender}" === "Female"): Use Female Hindi grammar ("Main kar rahi hoon", "Main dekhti hoon", "Main gayi").
+   - If Male ("${voiceGender}" === "Male"): Use Male Hindi grammar ("Main sikhata hoon", "Main dekhta hoon").
+   - If Female ("${voiceGender}" === "Female"): Use Female Hindi grammar ("Main sikhati hoon", "Main dekhti hoon").
 
-5. VISUAL ARTWORK PROMPT IN EVERY SCENE:
-   - Every single scene's "visual" MUST combine:
-     [Subject Character Name] + [Scene Specific Action & Pose] + [User Requested Art Style & Lighting].
-   - EVERY SCENE MUST FEATURE THE MAIN CHARACTER IN ACTION! Never return empty landscapes.
-
-6. ART STYLE SEPARATION (CRITICAL — DO NOT BREAK THIS RULE):
-   - Art style keywords (e.g. "3D Pixar", "Studio Ghibli", "Photorealistic 8K", "Cyberpunk neon", "2D Anime", "Watercolor") are VISUAL RENDERING INSTRUCTIONS ONLY.
-   - They MUST appear ONLY in the "visual" field for image generation.
-   - They must NEVER appear in "narration" or "spokenNarration" dialogue text.
-   - The narrator speaks about the CHARACTER and their STORY — NOT about visual styles or rendering techniques.
-   - ❌ WRONG narration: "Is 3D Pixar style video mein Bunny cake bana raha hai"
-   - ✅ CORRECT narration: "Bunny apni rasoi mein bade pyar se ek meetha cake bana raha hai"
-
-7. Return STRICT VALID JSON ONLY. No markdown wrapper, no extra text.
+6. Return STRICT VALID JSON ONLY. No markdown wrapper, no extra text.
 
 JSON Structure (strict):
 {
@@ -115,15 +108,15 @@ JSON Structure (strict):
   "subjectCharacter": "Exact Main Character/Subject Name",
   "targetDuration": ${targetDuration},
   "hook": "Unskippable viral hook line (10+ words)",
-  "caption": "Engaging Instagram caption with relevant hashtags",
-  "hashtags": ["#reels", "#viral", "#shorts"],
+  "caption": "Viral Instagram post caption with relevant emojis and hashtags",
+  "hashtags": ["#viral", "#reels", "#ai"],
   "scenes": [
     {
       "sceneNumber": 1,
-      "visual": "WRITE A 15-20 WORD IMAGE GENERATION PROMPT HERE: [Character name] [specific action] [exact environment/setting], [requested art style], [lighting], [camera angle]. Example: 'Cute cartoon bunny wearing apron, cracking eggs into bowl in cozy kitchen, 3D Pixar style, warm golden lighting, close-up shot'",
-      "narration": "Story sentence in Roman Hinglish (${targetWords}+ words)",
-      "spokenNarration": "EXACT SAME SENTENCE in Devanagari Hindi script (${targetWords}+ words)",
-      "onScreen": "Short badge text",
+      "visual": "Highly detailed descriptive ENGLISH AI video prompt with camera angle, lighting, 8k",
+      "narration": "Natural engaging Devanagari Hindi spoken voiceover dialogue",
+      "spokenNarration": "Natural engaging Devanagari Hindi spoken voiceover dialogue",
+      "onScreen": "Scene 01 • Title",
       "duration": ${sceneDuration}
     }
   ]
