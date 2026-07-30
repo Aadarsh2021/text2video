@@ -511,10 +511,10 @@ app.get(["/video", "/api/video"], async (req, res) => {
     .trim() || 'cinematic motion';
 
   // Helper to fetch and stream media buffer (video/mp4 or image/jpeg)
-  async function streamMedia(url, providerName, forceType = null) {
+  async function streamMedia(url, providerName, forceType = null, timeoutMs = 5000) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       const vidRes = await fetch(url, {
         signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -527,7 +527,7 @@ app.get(["/video", "/api/video"], async (req, res) => {
         if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
 
         const arrayBuffer = await vidRes.arrayBuffer();
-        if (arrayBuffer.byteLength < 3000) return false;
+        if (arrayBuffer.byteLength < 2000) return false;
 
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', arrayBuffer.byteLength);
@@ -542,30 +542,35 @@ app.get(["/video", "/api/video"], async (req, res) => {
   }
 
   // Smart Character & Topic Visual Prompt Enhancer
-  let enhancedPrompt = cleanPrompt;
+  const shortPrompt = cleanPrompt.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2).slice(0, 10).join(' ');
+  let enhancedPrompt = shortPrompt;
   if (/naruto/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Naruto Uzumaki 2D anime character portrait, yellow spiky hair, ninja headband, orange jumpsuit, Konoha village background, 8k vertical masterpiece';
+    enhancedPrompt += ', Naruto Uzumaki 2D anime character, yellow spiky hair, headband, orange jumpsuit, 8k vertical masterpiece';
   } else if (/sasuke/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Sasuke Uchiha 2D anime character portrait, dark spiky hair, Sharingan, blue ninja outfit, 8k vertical masterpiece';
+    enhancedPrompt += ', Sasuke Uchiha 2D anime character, dark hair, Sharingan, blue ninja outfit, 8k vertical masterpiece';
   } else if (/sakura/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Sakura Haruno 2D anime character portrait, pink hair, red ninja outfit, 8k vertical masterpiece';
+    enhancedPrompt += ', Sakura Haruno 2D anime character, pink hair, red outfit, 8k vertical masterpiece';
   } else if (/goku|dragonball/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Son Goku Super Saiyan anime character portrait, spiky golden hair, martial arts gi, 8k vertical masterpiece';
+    enhancedPrompt += ', Son Goku Super Saiyan anime character, spiky golden hair, martial arts gi, 8k vertical masterpiece';
   } else if (/hanuman|bhakti|god/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Lord Hanuman Ji divine statue, glowing golden aura, mountain sunrise, 8k vertical masterpiece';
-  } else if (/gym|workout|fitness/i.test(cleanPrompt)) {
-    enhancedPrompt += ', Muscular athlete performing workout in modern gym, cinematic lighting, 8k vertical masterpiece';
+    enhancedPrompt += ', Lord Hanuman Ji divine statue, golden aura, mountain sunrise, 8k vertical masterpiece';
+  } else if (/gym|workout|fitness|athlete/i.test(cleanPrompt)) {
+    enhancedPrompt += ', Athlete workout in modern gym, cinematic lighting, 8k vertical masterpiece';
   } else {
     enhancedPrompt += ', 8k resolution, vertical cinematic clip masterpiece, photorealistic';
   }
 
-  // Tier 1: Pollinations Fast Turbo Model
+  // Tier 1: Pollinations Fast Turbo Model (5s fast timeout)
   const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
-  if (await streamMedia(turboUrl, `AI Character Engine Turbo ["${cleanPrompt.slice(0, 30)}"]`, 'image/jpeg')) return;
+  if (await streamMedia(turboUrl, `AI Character Engine Turbo ["${shortPrompt.slice(0, 25)}"]`, 'image/jpeg', 5000)) return;
 
-  // Tier 2: Pollinations Default Model
+  // Tier 2: Pollinations Default Model (5s fast timeout)
   const defaultUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&seed=${seed}`;
-  if (await streamMedia(defaultUrl, 'AI Character Engine Standard', 'image/jpeg')) return;
+  if (await streamMedia(defaultUrl, 'AI Character Engine Standard', 'image/jpeg', 5000)) return;
+
+  // Tier 3: Picsum Photographic Scene Generator (100% Failover!)
+  const picsumUrl = `https://picsum.photos/seed/${seed}/540/960`;
+  if (await streamMedia(picsumUrl, 'Picsum Scene Engine', 'image/jpeg', 6000)) return;
 
   return res.status(500).json({ error: 'Character visual generation failed' });
 });
