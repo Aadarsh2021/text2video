@@ -81,16 +81,23 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
       .then(blob => {
         if (blob.size < 2000) throw new Error('Empty blob');
         const blobUrl = URL.createObjectURL(blob);
-        const vid = document.createElement('video');
-        vid.muted = true;
-        vid.loop = true;
-        vid.playsInline = true;
-        vid.preload = 'auto';
-        vid.oncanplay = () => { vid.play().catch(() => {}); safeDone(vid); };
-        vid.onloadeddata = () => { vid.play().catch(() => {}); safeDone(vid); };
-        vid.onerror = () => safeDone(null);
-        vid.src = blobUrl;
-        vid.load();
+        if (blob.type.includes('image')) {
+          const img = new Image();
+          img.onload = () => safeDone(img);
+          img.onerror = () => safeDone(null);
+          img.src = blobUrl;
+        } else {
+          const vid = document.createElement('video');
+          vid.muted = true;
+          vid.loop = true;
+          vid.playsInline = true;
+          vid.preload = 'auto';
+          vid.oncanplay = () => { vid.play().catch(() => {}); safeDone(vid); };
+          vid.onloadeddata = () => { vid.play().catch(() => {}); safeDone(vid); };
+          vid.onerror = () => safeDone(null);
+          vid.src = blobUrl;
+          vid.load();
+        }
       })
       .catch(() => safeDone(null)); // null = animated gradient fallback, never black screen
 

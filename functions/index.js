@@ -510,8 +510,8 @@ app.get(["/video", "/api/video"], async (req, res) => {
     .replace(/[^a-zA-Z0-9\s]/g, '')
     .trim() || 'cinematic motion';
 
-  // Helper to fetch and stream moving MP4 video buffer
-  async function streamVideo(url, providerName) {
+  // Helper to fetch and stream media buffer (video/mp4 or image/jpeg)
+  async function streamMedia(url, providerName, forceType = null) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 20000);
@@ -523,67 +523,33 @@ app.get(["/video", "/api/video"], async (req, res) => {
       clearTimeout(timer);
 
       if (vidRes.ok) {
-        const contentType = vidRes.headers.get('content-type') || 'video/mp4';
+        const contentType = forceType || vidRes.headers.get('content-type') || 'video/mp4';
         if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
 
         const arrayBuffer = await vidRes.arrayBuffer();
         if (arrayBuffer.byteLength < 3000) return false;
 
-        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Length', arrayBuffer.byteLength);
         res.setHeader('Cache-Control', 'public, max-age=86400');
         res.send(Buffer.from(arrayBuffer));
         return true;
       }
     } catch (e) {
-      console.warn(`[Video MP4 Stream] ${providerName}:`, e.message);
+      console.warn(`[Media Stream] ${providerName}:`, e.message);
     }
     return false;
   }
 
-  const videoPools = {
-    action: [
-      'https://media.w3.org/2010/05/sintel/trailer.mp4',
-      'https://vjs.zencdn.net/v/oceans.mp4',
-      'https://www.w3schools.com/html/mov_bbb.mp4'
-    ],
-    anime: [
-      'https://media.w3.org/2010/05/sintel/trailer.mp4',
-      'https://www.w3schools.com/html/mov_bbb.mp4',
-      'https://vjs.zencdn.net/v/oceans.mp4'
-    ],
-    nature: [
-      'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-      'https://vjs.zencdn.net/v/oceans.mp4',
-      'https://www.w3schools.com/html/movie.mp4'
-    ],
-    default: [
-      'https://vjs.zencdn.net/v/oceans.mp4',
-      'https://media.w3.org/2010/05/sintel/trailer.mp4',
-      'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-      'https://www.w3schools.com/html/mov_bbb.mp4',
-      'https://www.w3schools.com/html/movie.mp4'
-    ]
-  };
+  // Tier 1: Generate 100% Prompt-Matched High-Definition Scene Visual Artwork
+  const aiVisualUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', 8k resolution, vertical cinematic masterpiece, photorealistic')}?width=540&height=960&nologo=true&seed=${seed}`;
+  if (await streamMedia(aiVisualUrl, `AI Prompt Scene Engine ["${cleanPrompt.slice(0, 35)}"]`, 'image/jpeg')) return;
 
-  let category = 'default';
-  if (/(naruto|anime|goku|ninja|fight|action|power|samurai)/i.test(cleanPrompt)) {
-    category = 'anime';
-  } else if (/(nature|statue|temple|sunrise|sunset|landscape|water|flower)/i.test(cleanPrompt)) {
-    category = 'nature';
-  } else if (/(workout|running|fitness|gym|athlete|speed)/i.test(cleanPrompt)) {
-    category = 'action';
-  }
-
-  const selectedPool = videoPools[category] || videoPools.default;
-  const targetUrl = selectedPool[Number(seed) % selectedPool.length];
-
-  if (await streamVideo(targetUrl, `HD MP4 Pool [${category}]`)) return;
-
+  // Tier 2: Guaranteed Fallback MP4
   const fallbackUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
-  if (await streamVideo(fallbackUrl, 'Verified MP4 Fallback')) return;
+  if (await streamMedia(fallbackUrl, 'Verified Fallback')) return;
 
-  return res.status(500).json({ error: 'Video generation failed' });
+  return res.status(500).json({ error: 'Media stream failed' });
 });
 
 // Export Cloud Function with public unauthenticated invoker access

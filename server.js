@@ -506,8 +506,8 @@ async function handleServerRequest(request, response) {
         .replace(/[^a-zA-Z0-9\s]/g, '')
         .trim() || 'cinematic motion';
 
-      // Download and serve moving MP4 video buffer
-      async function sendVideo(urlStr, providerName) {
+      // Download and serve media buffer (video/mp4 or image/jpeg)
+      async function sendMedia(urlStr, providerName, forceType = null) {
         try {
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), 20000);
@@ -519,15 +519,15 @@ async function handleServerRequest(request, response) {
           clearTimeout(timer);
 
           if (!vidRes.ok) return false;
-          const contentType = vidRes.headers.get('content-type') || 'video/mp4';
+          const contentType = forceType || vidRes.headers.get('content-type') || 'video/mp4';
           if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
 
           const arrayBuffer = await vidRes.arrayBuffer();
           if (arrayBuffer.byteLength < 3000) return false;
 
-          console.log(`[Video MP4] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (video/mp4)`);
+          console.log(`[Visual Scene] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (${contentType})`);
           response.writeHead(200, {
-            'Content-Type': 'video/mp4',
+            'Content-Type': contentType,
             'Content-Length': arrayBuffer.byteLength,
             'Access-Control-Allow-Origin': '*',
             'Cache-Control': 'public, max-age=86400'
@@ -537,52 +537,27 @@ async function handleServerRequest(request, response) {
         } catch (e) { return false; }
       }
 
-      // Smart topic categorization into verified 200 OK HD MP4 video streams
-      const videoPools = {
-        action: [
-          'https://media.w3.org/2010/05/sintel/trailer.mp4',
-          'https://vjs.zencdn.net/v/oceans.mp4',
-          'https://www.w3schools.com/html/mov_bbb.mp4'
-        ],
-        anime: [
-          'https://media.w3.org/2010/05/sintel/trailer.mp4',
-          'https://www.w3schools.com/html/mov_bbb.mp4',
-          'https://vjs.zencdn.net/v/oceans.mp4'
-        ],
-        nature: [
-          'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-          'https://vjs.zencdn.net/v/oceans.mp4',
-          'https://www.w3schools.com/html/movie.mp4'
-        ],
-        default: [
-          'https://vjs.zencdn.net/v/oceans.mp4',
-          'https://media.w3.org/2010/05/sintel/trailer.mp4',
-          'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-          'https://www.w3schools.com/html/mov_bbb.mp4',
-          'https://www.w3schools.com/html/movie.mp4'
-        ]
-      };
+      // Tier 1: Generate 100% Prompt-Matched High-Definition Scene Visual Artwork (Pollinations FLUX / AI Engine)
+      const aiVisualUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', 8k resolution, vertical cinematic masterpiece, photorealistic')}?width=540&height=960&nologo=true&seed=${seed}`;
+      if (await sendMedia(aiVisualUrl, `AI Prompt Scene Engine ["${cleanPrompt.slice(0, 35)}"]`, 'image/jpeg')) return;
 
-      let category = 'default';
-      if (/(naruto|anime|goku|ninja|fight|action|power|samurai)/i.test(cleanPrompt)) {
-        category = 'anime';
-      } else if (/(nature|statue|temple|sunrise|sunset|landscape|water|flower)/i.test(cleanPrompt)) {
-        category = 'nature';
-      } else if (/(workout|running|fitness|gym|athlete|speed)/i.test(cleanPrompt)) {
-        category = 'action';
-      }
+      // Tier 2: Lexica AI Search Engine
+      try {
+        const lexicaRes = await fetch(`https://lexica.art/api/v1/search?q=${encodeURIComponent(cleanPrompt.slice(0, 80))}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (lexicaRes.ok) {
+          const data = await lexicaRes.json();
+          if (data?.images?.length > 0) {
+            const hit = data.images[Number(seed) % data.images.length];
+            if (hit?.src && await sendMedia(hit.src, 'Lexica Prompt AI', 'image/jpeg')) return;
+          }
+        }
+      } catch (e) {}
 
-      const selectedPool = videoPools[category] || videoPools.default;
-      const targetUrl = selectedPool[Number(seed) % selectedPool.length];
-
-      console.log(`[Video MP4] prompt: "${cleanPrompt.slice(0, 50)}..." category:${category} -> ${targetUrl}`);
-      if (await sendVideo(targetUrl, `HD MP4 Video Pool [${category}]`)) return;
-
-      // Guaranteed fallback
+      // Tier 3: Guaranteed 200 OK HD Video
       const fallbackUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
-      if (await sendVideo(fallbackUrl, 'Verified MP4 Fallback')) return;
+      if (await sendMedia(fallbackUrl, 'Verified MP4 Fallback')) return;
 
-      response.writeHead(500); response.end('Video stream failed');
+      response.writeHead(500); response.end('Media stream failed');
       return;
     }
 
