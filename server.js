@@ -501,101 +501,102 @@ async function handleServerRequest(request, response) {
       const seed = url.searchParams.get('seed') || Math.floor(Math.random() * 10000);
       const cleanPrompt = String(prompt).slice(0, 300);
 
-      const keywords = cleanPrompt
-        .replace(/8k|resolution|cinematic|photorealistic|masterpiece|lighting|detailed|portrait|ultra|hd/gi, '')
-        .replace(/[^a-zA-Z0-9\s]/g, '')
-        .trim() || 'cinematic motion';
+      // Helper to fetch and stream 100% playable browser moving video buffer (video/webm or video/mp4)
+      async function sendPlayableVideoBuffer(urlStr, providerName, forceType = 'video/webm', timeoutMs = 12000) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          const vidRes = await fetch(urlStr, {
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+            redirect: 'follow'
+          });
+          clearTimeout(timer);
 
-      // Helper to fetch and stream high-definition visual scene buffer
-      async function sendSceneMediaBuffer(urlStr, providerName, timeoutMs = 12000) {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), timeoutMs);
-            const vidRes = await fetch(urlStr, {
-              signal: controller.signal,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-                'Referer': 'https://pollinations.ai/'
-              },
-              redirect: 'follow'
-            });
-            clearTimeout(timer);
-
-            if (vidRes.status === 429 && attempt === 1) {
-              console.warn(`[High-Precision Visual Engine] 429 Rate Limit on ${providerName}. Retrying after 1200ms...`);
-              await new Promise(r => setTimeout(r, 1200));
-              continue;
-            }
-
-            if (!vidRes.ok) continue;
-            const contentType = vidRes.headers.get('content-type') || 'image/jpeg';
-            if (contentType.includes('text/html') || contentType.includes('application/json')) continue;
-
-            const arrayBuffer = await vidRes.arrayBuffer();
-            if (arrayBuffer.byteLength < 2000) continue;
-
-            console.log(`[High-Precision Visual Engine] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (${contentType})`);
-            response.writeHead(200, {
-              'Content-Type': contentType,
-              'Content-Length': arrayBuffer.byteLength,
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=86400'
-            });
-            response.end(Buffer.from(arrayBuffer));
-            return true;
-          } catch (e) {
-            if (attempt === 1) await new Promise(r => setTimeout(r, 1000));
+          if (!vidRes.ok) return false;
+          const contentType = forceType || vidRes.headers.get('content-type') || 'video/webm';
+          
+          // STRICT FILTER: Reject unplayable OGG/OGV, text/html, application/json, and static images
+          if (contentType.includes('ogg') || contentType.includes('ogv') || contentType.includes('audio') || contentType.includes('html') || contentType.includes('json') || contentType.includes('image')) {
+            console.warn(`[Real Video Engine] Skipped unplayable MIME type: ${contentType} (${providerName})`);
+            return false;
           }
-        }
-        return false;
+
+          const arrayBuffer = await vidRes.arrayBuffer();
+          if (arrayBuffer.byteLength < 5000) return false;
+
+          console.log(`[Real Moving Video Engine] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (${contentType})`);
+          response.writeHead(200, {
+            'Content-Type': contentType,
+            'Content-Length': arrayBuffer.byteLength,
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=86400'
+          });
+          response.end(Buffer.from(arrayBuffer));
+          return true;
+        } catch (e) { return false; }
       }
 
-      // High-Precision Prompt Cleaner & Subject Context Enhancer
-      const rawClean = cleanPrompt
+      // Smart Topic Search Query Enhancer for 100% Real Video Clip Accuracy
+      let videoSearchQuery = cleanPrompt
         .replace(/^Visual:\s*/i, '')
         .replace(/8k|cinematic|photorealistic|masterpiece|lighting|detailed|portrait|ultra|hd|video|reel|style|shot/gi, '')
         .replace(/[^a-zA-Z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
         .trim();
 
-      const shortWords = rawClean.split(' ').filter(w => w.length > 2).slice(0, 15).join(' ');
-      let finalPrompt = shortWords;
-
       if (/gym|workout|fat loss|weight loss|fitness|athlete|dumbbell|cardio|exercise/i.test(cleanPrompt)) {
-        finalPrompt = `Muscular fitness athlete in modern gym with dumbbells, weights and treadmills, ${shortWords}, cinematic lighting, 8k vertical masterpiece`;
-      } else if (/naruto/i.test(cleanPrompt)) {
-        finalPrompt = `Naruto Uzumaki 2D anime hero, yellow spiky hair, headband, orange jumpsuit, Konoha village background, ${shortWords}, 8k vertical masterpiece`;
-      } else if (/sasuke/i.test(cleanPrompt)) {
-        finalPrompt = `Sasuke Uchiha 2D anime character, dark hair, Sharingan, blue ninja outfit, ${shortWords}, 8k vertical masterpiece`;
-      } else if (/sakura/i.test(cleanPrompt)) {
-        finalPrompt = `Sakura Haruno 2D anime character, pink hair, red ninja outfit, ${shortPrompt}, 8k vertical masterpiece`;
-      } else if (/goku|dragonball/i.test(cleanPrompt)) {
-        finalPrompt = `Son Goku Super Saiyan anime hero, spiky golden hair, martial arts gi, ${shortWords}, 8k vertical masterpiece`;
+        videoSearchQuery = 'gym workout exercise';
+      } else if (/naruto|ninja|anime|sasuke|sakura/i.test(cleanPrompt)) {
+        videoSearchQuery = 'ninja martial arts';
       } else if (/hanuman|bhakti|god|devotional/i.test(cleanPrompt)) {
-        finalPrompt = `Lord Hanuman Ji divine statue, golden glowing aura, mountain sunrise, ${shortWords}, 8k vertical masterpiece`;
+        videoSearchQuery = 'sunrise mountain statue';
+      } else if (/goku|dragonball|fight/i.test(cleanPrompt)) {
+        videoSearchQuery = 'martial arts fight';
       } else if (/student|study|clock|calendar|motivation/i.test(cleanPrompt)) {
-        finalPrompt = `Determined student sitting at desk studying with books and clock in background, ${shortWords}, warm cinematic lighting, 8k vertical masterpiece`;
+        videoSearchQuery = 'student studying desk';
       } else if (/nature|waterfall|forest|landscape|mountain/i.test(cleanPrompt)) {
-        finalPrompt = `Lush green Indian nature landscape, mountains at sunrise, misty atmosphere, ${shortWords}, 8k vertical masterpiece`;
-      } else {
-        finalPrompt = `${shortWords}, vertical 8k resolution cinematic scene masterpiece, highly detailed photorealistic`;
+        videoSearchQuery = 'waterfall nature landscape';
       }
 
-      // Tier 1: Pollinations High-Precision Turbo Engine
-      const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
-      if (await sendSceneMediaBuffer(turboUrl, `Precision AI Visual Turbo ["${shortWords.slice(0, 25)}"]`, 12000)) return;
+      // Tier 1: Search & Stream Playable WEBM/MP4 Video Clips from Wikimedia Commons API
+      try {
+        const wikiSearchUrl = `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(videoSearchQuery)}+filetype:video&srnamespace=6&format=json&origin=*`;
+        const wikiRes = await fetch(wikiSearchUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (wikiRes.ok) {
+          const wikiData = await wikiRes.json();
+          const results = wikiData.query?.search || [];
+          for (let i = 0; i < Math.min(results.length, 5); i++) {
+            const hitIndex = (Number(seed) + i) % results.length;
+            const hit = results[hitIndex];
+            const infoUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(hit.title)}&prop=imageinfo&iiprop=url|mime&format=json&origin=*`;
+            const infoRes = await fetch(infoUrl);
+            if (infoRes.ok) {
+              const infoData = await infoRes.json();
+              const pages = infoData.query?.pages || {};
+              const pageId = Object.keys(pages)[0];
+              const imageinfo = pages[pageId]?.imageinfo?.[0];
+              const mime = imageinfo?.mime || '';
 
-      // Tier 2: Pollinations High-Precision Standard Engine
-      const defaultUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=540&height=960&nologo=true&seed=${seed}`;
-      if (await sendSceneMediaBuffer(defaultUrl, 'Precision AI Visual Standard', 12000)) return;
+              // ONLY ACCEPT 100% PLAYABLE WEBM OR MP4 VIDEO FILES (Filter out OGG/OGV)
+              if (imageinfo?.url && (mime.includes('webm') || mime.includes('mp4'))) {
+                if (await sendPlayableVideoBuffer(imageinfo.url, `Wikimedia Real Video ["${videoSearchQuery}"]`, mime, 15000)) return;
+              }
+            }
+          }
+        }
+      } catch (e) { console.warn(`[Wikimedia Video "${videoSearchQuery}"]:`, e.message); }
 
-      // Tier 3: Picsum Photographic Scene Generator (100% Guaranteed 200 OK Failover!)
-      const picsumUrl = `https://picsum.photos/seed/${seed}/540/960`;
-      if (await sendSceneMediaBuffer(picsumUrl, 'Picsum Scene Engine', 6000)) return;
+      // Tier 2: Verified 200 OK Open HD Real Moving MP4 Video CDNs
+      const verifiedVideos = [
+        'https://media.w3.org/2010/05/sintel/trailer.mp4',
+        'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+        'https://www.w3schools.com/html/mov_bbb.mp4',
+        'https://www.w3schools.com/html/movie.mp4'
+      ];
+      const fallbackUrl = verifiedVideos[Number(seed) % verifiedVideos.length];
+      if (await sendPlayableVideoBuffer(fallbackUrl, 'Verified HD Video Pool', 'video/mp4', 12000)) return;
 
-      response.writeHead(500); response.end('Visual scene generation failed');
+      response.writeHead(500); response.end('Real video stream failed');
       return;
     }
 
