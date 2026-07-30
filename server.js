@@ -553,41 +553,26 @@ async function handleServerRequest(request, response) {
       }
 
       // Model 1: Pixabay Film HD Video (FASTEST — direct MP4, no AI wait time)
-      try {
-        const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
-        const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(keywords.slice(0, 35))}&per_page=15&video_type=film`);
-        if (pxaRes.ok) {
-          const data = await pxaRes.json();
-          if (data && data.hits && data.hits.length > 0) {
-            const hit = data.hits[Number(seed) % data.hits.length];
-            const mp4Url = hit.videos?.medium?.url || hit.videos?.large?.url || hit.videos?.small?.url;
-            if (mp4Url && await sendVideo(mp4Url, 'Pixabay HD Video Engine')) return;
+      const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
+      const tryPixabay = async (query) => {
+        try {
+          const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(query)}&per_page=15&video_type=film`);
+          if (pxaRes.ok) {
+            const data = await pxaRes.json();
+            if (data && data.hits && data.hits.length > 0) {
+              const hit = data.hits[Number(seed) % data.hits.length];
+              const mp4Url = hit.videos?.medium?.url || hit.videos?.large?.url || hit.videos?.small?.url;
+              if (mp4Url && await sendVideo(mp4Url, 'Pixabay HD Video Engine')) return true;
+            }
           }
-        }
-      } catch (e) {
-        console.warn('[Pixabay Video] note:', e.message);
-      }
+        } catch (e) { console.warn('[Pixabay Video] note:', e.message); }
+        return false;
+      };
+      // Try specific keywords first, then generic fallback
+      if (await tryPixabay(keywords.slice(0, 35))) return;
+      if (await tryPixabay('cinematic motion people')) return;
 
-      // Model 2: Pollinations AI Video (may take time — kept as secondary)
-      const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', motion video, cinematic clip')}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
-      if (await sendVideo(videoUrl, 'Pollinations Video Model')) return;
-
-      // Model 3: HuggingFace AnimateDiff Lightning (free public)
-      try {
-        const hfRes = await fetch(`https://router.huggingface.co/hf-inference/models/ByteDance/AnimateDiff-Lightning`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputs: cleanPrompt })
-        });
-        if (hfRes.ok) {
-          const ct = hfRes.headers.get('content-type') || 'video/mp4';
-          const buf = await hfRes.arrayBuffer();
-          response.writeHead(200, { 'Content-Type': ct, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
-          response.end(Buffer.from(buf)); return;
-        }
-      } catch (e) { console.warn('[HuggingFace AnimateDiff] note:', e.message); }
-
-      // Model 4: Static fallback video clip
+      // Model 2: Static fallback clip (instant — always works)
       const defaultVideoUrl = `https://pixabay.com/videos/download/video-31377_medium.mp4`;
       if (await sendVideo(defaultVideoUrl, 'HD Fallback Stream')) return;
 
@@ -727,22 +712,7 @@ async function handleServerRequest(request, response) {
         return sendJson(response, 400, { error: 'Prompt is required.' });
       }
 
-      // TIER 1: Keyless Free Pollinations Text AI (Zero API key required!)
-      try {
-        const result = await generateWithPollinationsText(body);
-        return sendJson(response, 200, result);
-      } catch (e) { console.warn('Keyless Pollinations Text AI error, trying fallback:', e.message); }
-
-      // TIER 2: Cerebras — World's Fastest Free LPU (Llama 3.3 70B)
-      const cerebrasKey = body.cerebrasKey || (typeof CEREBRAS_API_KEY !== 'undefined' ? CEREBRAS_API_KEY : '');
-      if (cerebrasKey) {
-        try {
-          const result = await generateWithCerebras(body, cerebrasKey);
-          return sendJson(response, 200, result);
-        } catch (e) { console.warn('Cerebras error, trying Groq:', e.message); }
-      }
-
-      // TIER 3: Groq — Ultra-Fast Free LPU Inference (Llama 3.3 70B)
+      // TIER 1: Groq — Ultra-Fast Free LPU Inference (Llama 3.3 70B) — PRIMARY
       const groqKey = body.groqKey || (typeof GROQ_API_KEY !== 'undefined' ? GROQ_API_KEY : '');
       if (groqKey) {
         try {
@@ -751,16 +721,22 @@ async function handleServerRequest(request, response) {
         } catch (e) { console.warn('Groq error, trying Gemini:', e.message); }
       }
 
-      // TIER 4: Google Gemini 2.5 Flash
+      // TIER 2: Google Gemini 2.5 Flash
       const geminiKey = body.geminiKey || (typeof GEMINI_API_KEY !== 'undefined' ? GEMINI_API_KEY : '');
       if (geminiKey) {
         try {
           const result = await generateWithGemini(body, geminiKey);
           return sendJson(response, 200, result);
-        } catch (e) { console.warn('Gemini error, using Built-in:', e.message); }
+        } catch (e) { console.warn('Gemini error, trying Pollinations:', e.message); }
       }
 
-      // TIER 5: Built-in Director Engine (Guaranteed 100% Offline Fallback)
+      // TIER 3: Keyless Pollinations Text AI (No API key required — last resort)
+      try {
+        const result = await generateWithPollinationsText(body);
+        return sendJson(response, 200, result);
+      } catch (e) { console.warn('Pollinations Text AI error, using Built-in:', e.message); }
+
+      // TIER 4: Built-in Director Engine (Guaranteed 100% Offline Fallback)
       const start = Date.now();
       const reelData = simulateBuiltinModel(body.prompt, '', body.language, body.duration);
       return sendJson(response, 200, {
