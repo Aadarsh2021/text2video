@@ -537,27 +537,45 @@ async function handleServerRequest(request, response) {
         } catch (e) { return false; }
       }
 
-      // Tier 1: Generate 100% Prompt-Matched High-Definition Scene Visual Artwork (Pollinations FLUX / AI Engine)
-      const aiVisualUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', 8k resolution, vertical cinematic masterpiece, photorealistic')}?width=540&height=960&nologo=true&seed=${seed}`;
-      if (await sendMedia(aiVisualUrl, `AI Prompt Scene Engine ["${cleanPrompt.slice(0, 35)}"]`, 'image/jpeg')) return;
+      // Smart Character & Topic Visual Prompt Enhancer
+      let enhancedPrompt = cleanPrompt;
+      if (/naruto/i.test(cleanPrompt)) {
+        enhancedPrompt += ', Naruto Uzumaki 2D anime character portrait, yellow spiky hair, ninja headband, orange jumpsuit, Konoha village background, 8k vertical masterpiece';
+      } else if (/sasuke/i.test(cleanPrompt)) {
+        enhancedPrompt += ', Sasuke Uchiha 2D anime character portrait, dark spiky hair, Sharingan, blue ninja outfit, 8k vertical masterpiece';
+      } else if (/sakura/i.test(cleanPrompt)) {
+        enhancedPrompt += ', Sakura Haruno 2D anime character portrait, pink hair, red ninja outfit, 8k vertical masterpiece';
+      } else if (/goku|dragonball/i.test(cleanPrompt)) {
+        enhancedPrompt += ', Son Goku Super Saiyan anime character portrait, spiky golden hair, martial arts gi, 8k vertical masterpiece';
+      } else if (/hanuman|bhakti|god/i.test(cleanPrompt)) {
+        enhancedPrompt += ', Lord Hanuman Ji divine statue, glowing golden aura, mountain sunrise, 8k vertical masterpiece';
+      } else if (/gym|workout|fitness/i.test(cleanPrompt)) {
+        enhancedPrompt += ', Muscular athlete performing workout in modern gym, cinematic lighting, 8k vertical masterpiece';
+      } else {
+        enhancedPrompt += ', 8k resolution, vertical cinematic clip masterpiece, photorealistic';
+      }
 
-      // Tier 2: Lexica AI Search Engine
+      // Tier 1: Pollinations Fast Turbo Model (1-2s response)
+      const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
+      if (await sendMedia(turboUrl, `AI Character Engine Turbo ["${cleanPrompt.slice(0, 30)}"]`, 'image/jpeg')) return;
+
+      // Tier 2: Pollinations Default Model
+      const defaultUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&seed=${seed}`;
+      if (await sendMedia(defaultUrl, 'AI Character Engine Standard', 'image/jpeg')) return;
+
+      // Tier 3: Lexica AI Search Engine
       try {
         const lexicaRes = await fetch(`https://lexica.art/api/v1/search?q=${encodeURIComponent(cleanPrompt.slice(0, 80))}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (lexicaRes.ok) {
           const data = await lexicaRes.json();
           if (data?.images?.length > 0) {
             const hit = data.images[Number(seed) % data.images.length];
-            if (hit?.src && await sendMedia(hit.src, 'Lexica Prompt AI', 'image/jpeg')) return;
+            if (hit?.src && await sendMedia(hit.src, 'Lexica Character AI', 'image/jpeg')) return;
           }
         }
       } catch (e) {}
 
-      // Tier 3: Guaranteed 200 OK HD Video
-      const fallbackUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
-      if (await sendMedia(fallbackUrl, 'Verified MP4 Fallback')) return;
-
-      response.writeHead(500); response.end('Media stream failed');
+      response.writeHead(500); response.end('Character visual generation failed');
       return;
     }
 
