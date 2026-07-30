@@ -511,18 +511,27 @@ app.get(["/video", "/api/video"], async (req, res) => {
     .trim() || 'cinematic motion';
 
   // Helper to fetch and stream video buffer
-  async function streamVideo(url, providerName, headers = {}) {
+  async function streamVideo(url, providerName) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000); // AI models need up to 20s
-      const vidRes = await fetch(url, { signal: controller.signal, headers });
+      const timer = setTimeout(() => controller.abort(), 20000);
+      const vidRes = await fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        redirect: 'follow'
+      });
       clearTimeout(timer);
 
       if (vidRes.ok) {
-        const contentType = vidRes.headers.get('content-type') || 'video/mp4';
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Cache-Control', 'public, max-age=86400');
+        const contentType = vidRes.headers.get('content-type') || '';
+        if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
+
         const arrayBuffer = await vidRes.arrayBuffer();
+        if (arrayBuffer.byteLength < 5000) return false;
+
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader('Content-Length', arrayBuffer.byteLength);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
         res.send(Buffer.from(arrayBuffer));
         return true;
       }
@@ -532,44 +541,46 @@ app.get(["/video", "/api/video"], async (req, res) => {
     return false;
   }
 
-  // Model 1: Pixabay Film HD Video (FASTEST — direct MP4, no AI wait time)
-  try {
-    const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
-    const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(keywords.slice(0, 35))}&per_page=15&video_type=film`);
-    if (pxaRes.ok) {
-      const data = await pxaRes.json();
-      if (data && data.hits && data.hits.length > 0) {
-        const hit = data.hits[Number(seed) % data.hits.length];
-        const mp4Url = hit.videos?.medium?.url || hit.videos?.large?.url || hit.videos?.small?.url;
-        if (mp4Url && await streamVideo(mp4Url, 'Pixabay HD Video Engine')) return;
+  const words = keywords
+    .split(/\s+/)
+    .map(w => w.trim().toLowerCase())
+    .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'have', 'more', 'some', 'were', 'shot', 'shots', 'background', 'foreground'].includes(w));
+
+  const queryCandidates = [];
+  if (words.length >= 2) queryCandidates.push(words.slice(0, 2).join(' '));
+  if (words.length >= 1) queryCandidates.push(words[0]);
+  if (words.length >= 2) queryCandidates.push(words[1]);
+  queryCandidates.push('nature', 'cinematic');
+
+  // Model 1: Pixabay Film HD Video
+  const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
+  for (const q of queryCandidates) {
+    try {
+      const pxaRes = await fetch(
+        `https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(q)}&per_page=15&video_type=film&safesearch=true`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      );
+      if (pxaRes.ok) {
+        const data = await pxaRes.json();
+        if (data?.hits?.length > 0) {
+          const hit = data.hits[Number(seed) % data.hits.length];
+          const mp4Url = hit.videos?.medium?.url || hit.videos?.small?.url || hit.videos?.tiny?.url;
+          if (mp4Url && await streamVideo(mp4Url, `Pixabay[${q}]`)) return;
+        }
       }
-    }
-  } catch (e) {
-    console.warn('[Pixabay Video] note:', e.message);
+    } catch (e) { }
   }
 
-  // Model 2: Pollinations AI Video (secondary — slower but AI-generated)
-  const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', motion video, cinematic clip')}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
-  if (await streamVideo(videoUrl, 'Pollinations Video Model')) return;
-
-  // Model 3: HuggingFace AnimateDiff Lightning (free public)
-  try {
-    const hfRes = await fetch(`https://router.huggingface.co/hf-inference/models/ByteDance/AnimateDiff-Lightning`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs: cleanPrompt })
-    });
-    if (hfRes.ok) {
-      const ct = hfRes.headers.get('content-type') || 'video/mp4';
-      res.setHeader('Content-Type', ct);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      return res.send(Buffer.from(await hfRes.arrayBuffer()));
-    }
-  } catch (e) { console.warn('[HuggingFace AnimateDiff] note:', e.message); }
-
-  // Model 4: Static fallback clip
-  const defaultVideoUrl = `https://pixabay.com/videos/download/video-31377_medium.mp4`;
-  if (await streamVideo(defaultVideoUrl, 'HD Fallback Stream')) return;
+  // Model 2: Guaranteed GCS public sample MP4s
+  const gcsVideos = [
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4'
+  ];
+  const selectedGcs = gcsVideos[Number(seed) % gcsVideos.length];
+  if (await streamVideo(selectedGcs, 'GCS Fallback')) return;
 
   return res.status(500).json({ error: 'Video generation failed' });
 });

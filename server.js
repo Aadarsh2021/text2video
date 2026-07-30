@@ -536,12 +536,11 @@ async function handleServerRequest(request, response) {
       async function sendVideo(urlStr, providerName) {
         try {
           const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), 25000);
+          const timer = setTimeout(() => controller.abort(), 20000);
           const vidRes = await fetch(urlStr, {
             signal: controller.signal,
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Referer': 'https://pixabay.com/'
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
             redirect: 'follow'
           });
@@ -553,7 +552,6 @@ async function handleServerRequest(request, response) {
           }
 
           const contentType = vidRes.headers.get('content-type') || '';
-          // Reject HTML/JSON/text responses (error pages masquerading as success)
           if (contentType.includes('text/html') || contentType.includes('application/json')) {
             console.warn(`[Video] ${providerName}: got ${contentType}, skipping`);
             return false;
@@ -580,54 +578,53 @@ async function handleServerRequest(request, response) {
         }
       }
 
-      // Extract clean short keywords (3 words max)
-      const shortKeywords = keywords
+      // Extract individual key terms for Pixabay search (try single words first for high hit rates)
+      const words = keywords
         .split(/\s+/)
-        .filter(w => w.length > 3)
-        .slice(0, 3)
-        .join(' ')
-        .slice(0, 30) || 'nature';
+        .map(w => w.trim().toLowerCase())
+        .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'have', 'more', 'some', 'were', 'shot', 'shots', 'background', 'foreground'].includes(w));
 
-      console.log(`[Video] keywords: "${shortKeywords}" seed:${seed}`);
+      const queryCandidates = [];
+      if (words.length >= 2) queryCandidates.push(words.slice(0, 2).join(' '));
+      if (words.length >= 1) queryCandidates.push(words[0]);
+      if (words.length >= 2) queryCandidates.push(words[1]);
+      queryCandidates.push('nature', 'cinematic');
 
-      // Model 1: Pixabay (free API, CDN URLs with Referer header)
+      console.log(`[Video] keywords tried: ${JSON.stringify(queryCandidates.slice(0, 3))} seed:${seed}`);
+
+      // Model 1: Pixabay search
       const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
-      const tryPixabay = async (query) => {
+      for (const q of queryCandidates) {
         try {
           const pxaRes = await fetch(
-            `https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(query)}&per_page=15&video_type=film&safesearch=true`,
+            `https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(q)}&per_page=15&video_type=film&safesearch=true`,
             { headers: { 'User-Agent': 'Mozilla/5.0' }, redirect: 'follow' }
           );
-          if (!pxaRes.ok) return false;
-          const data = await pxaRes.json();
-          if (data?.hits?.length > 0) {
-            const hit = data.hits[Number(seed) % data.hits.length];
-            const mp4Url = hit.videos?.tiny?.url || hit.videos?.small?.url || hit.videos?.medium?.url;
-            console.log(`[Pixabay] "${query}" → ${mp4Url || 'no URL'}`);
-            if (mp4Url && await sendVideo(mp4Url, `Pixabay[${query}]`)) return true;
+          if (pxaRes.ok) {
+            const data = await pxaRes.json();
+            if (data?.hits?.length > 0) {
+              const hit = data.hits[Number(seed) % data.hits.length];
+              const mp4Url = hit.videos?.medium?.url || hit.videos?.small?.url || hit.videos?.tiny?.url;
+              if (mp4Url && await sendVideo(mp4Url, `Pixabay[${q}]`)) return;
+            }
           }
-        } catch (e) { console.warn('[Pixabay]:', e.message); }
-        return false;
-      };
+        } catch (e) { console.warn(`[Pixabay search "${q}"]:`, e.message); }
+      }
 
-      if (await tryPixabay(shortKeywords)) return;
-      if (await tryPixabay('people')) return;
-      if (await tryPixabay('nature')) return;
-
-      // Model 2: Google publicly hosted sample videos (always available, no auth)
-      const googleVideos = [
-        'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-        'https://storage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4',
-        'https://storage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
-        'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-        'https://storage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+      // Model 2: Guaranteed Google Cloud Storage public sample MP4s (NO 403 now that Referer header is clean)
+      const gcsVideos = [
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4',
+        'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4'
       ];
-      const googleUrl = googleVideos[Number(seed) % googleVideos.length];
-      console.log(`[Video] Trying Google CDN fallback: ${googleUrl}`);
-      if (await sendVideo(googleUrl, 'Google CDN Sample')) return;
+      const selectedGcs = gcsVideos[Number(seed) % gcsVideos.length];
+      console.log(`[Video] Fallback GCS video: ${selectedGcs}`);
+      if (await sendVideo(selectedGcs, 'GCS HD Video Fallback')) return;
 
-      console.error('[Video] ALL sources failed → 500');
+      console.error('[Video] All video sources failed -> 500');
       response.writeHead(500); response.end('Video stream failed');
       return;
     }
