@@ -366,12 +366,37 @@ app.get(["/tts", "/api/tts"], async (req, res) => {
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Transliterate Roman Hinglish to Devanagari Hindi for pure Indian TTS voice
-  const cleanNarration = langParam === 'hi' ? convertHinglishToHindiDevanagari(cleaned) : cleaned;
+  // Smart English-to-Hindi Phonetic Word Substitution (Fixes English word mispronunciation)
+  const phoneticMap = {
+    'weight loss': 'वेट लॉस',
+    'fat loss': 'फैट लॉस',
+    'weight': 'वेट',
+    'loss': 'लॉस',
+    'fitness': 'फिटनेस',
+    'workout': 'वर्कआउट',
+    'diet': 'डाइट',
+    'achieve': 'अचीव',
+    'goals': 'गोल्स',
+    'result': 'रिजल्ट',
+    'difference': 'डिफरेंस',
+    'vocabulary': 'वोकैबुलरी',
+    'class': 'क्लास'
+  };
+
+  let cleanNarration = cleaned;
+  Object.keys(phoneticMap).forEach(engWord => {
+    cleanNarration = cleanNarration.replace(new RegExp('\\b' + engWord + '\\b', 'gi'), phoneticMap[engWord]);
+  });
+
+  // If text is NOT Devanagari Hindi, transliterate Hinglish. If ALREADY Devanagari, send directly!
+  const hasDevanagari = /[\u0900-\u097F]/.test(cleanNarration);
+  if (!hasDevanagari && langParam === 'hi') {
+    cleanNarration = convertHinglishToHindiDevanagari(cleanNarration);
+  }
 
   if (!cleanNarration) return res.status(400).send('Empty text');
 
-  // Voice Map: Real Indian Male (Madhur) vs Female (Swara) Neural Voices
+  // Voice Map: Real High-Quality Indian Male (Madhur) vs Female (Swara) Neural Voices
   const VOICE_MAP = {
     'Male_hi': 'hi-IN-MadhurNeural',      // Deep Male Heroic Voice
     'Female_hi': 'hi-IN-SwaraNeural',     // Energetic Female Host Voice
@@ -379,14 +404,13 @@ app.get(["/tts", "/api/tts"], async (req, res) => {
     'Female_en': 'en-IN-NeerjaNeural'     // Female English Voice
   };
 
-  const isHindi = langParam === 'hi' || /[\u0900-\u097F]/.test(cleanNarration);
-  const voiceKey = `${gender === 'Female' ? 'Female' : 'Male'}_${isHindi ? 'hi' : 'en'}`;
+  const voiceKey = `${gender === 'Female' ? 'Female' : 'Male'}_${langParam === 'en' ? 'en' : 'hi'}`;
   const voiceName = VOICE_MAP[voiceKey] || 'hi-IN-MadhurNeural';
 
   try {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'edge-tts-'));
     const tts = new MsEdgeTTS();
-    await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+    await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_160KBITRATE_MONO_MP3);
     const fileResult = await tts.toFile(tmpDir, cleanNarration);
     const finalBuffer = await fs.readFile(fileResult.audioFilePath);
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
