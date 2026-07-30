@@ -785,9 +785,9 @@ try {
 if (require.main === module) {
   const server = http.createServer(handleServerRequest);
   server.listen(PORT, () => {
-    console.log(`🚀 Text2Video AI Studio → http://localhost:${PORT}`);
-    console.log(`   ⚡ Script AI: Groq (Llama 3.3 70B Free LPU) → Gemini 2.5 Flash (Free) → Built-in`);
-    console.log(`   🎨 Image AI: Pollinations FLUX.1 → Pollinations Turbo → Picsum`);
-    console.log(`   🎙️ Voice AI: WebSpeech Deep Pitch (♂ 0.58 / ♀ 1.18) — 100% Free`);
+    console.log(`\n🚀 Text2Video AI Studio → http://localhost:${PORT}`);
+    console.log(`   ⚡ Script AI: Groq Llama 3.3 70B Versatile → AI Storyteller`);
+    console.log(`   🎬 Video AI: Hugging Face (AnimateDiff & ModelScope) → Pollinations Video → Pixabay HD`);
+    console.log(`   🎙️ Voice AI: Microsoft Edge Neural MP3 (hi-IN-MadhurNeural & hi-IN-SwaraNeural) — 160kbps HD\n`);
   });
 }
