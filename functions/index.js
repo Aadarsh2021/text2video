@@ -532,67 +532,44 @@ app.get(["/video", "/api/video"], async (req, res) => {
     return false;
   }
 
-  // Model 1: HuggingFace Free Public Text-To-Video (AnimateDiff Lightning)
-  try {
-    const hfVidUrl = `https://router.huggingface.co/hf-inference/models/ByteDance/AnimateDiff-Lightning`;
-    const hfRes = await fetch(hfVidUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs: cleanPrompt + ', 8k resolution, photorealistic cinematic video clip' })
-    });
-    if (hfRes.ok) {
-      const contentType = hfRes.headers.get('content-type') || 'video/mp4';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      const arrayBuffer = await hfRes.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
-    }
-  } catch (e) {
-    console.warn('[HuggingFace AnimateDiff] note:', e.message);
-  }
-
-  // Model 2: HuggingFace ModelScope Text-To-Video Synthesis
-  try {
-    const hfDamoUrl = `https://router.huggingface.co/hf-inference/models/damo-vilab/text-to-video-ms-1.7b`;
-    const hfDamoRes = await fetch(hfDamoUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inputs: cleanPrompt })
-    });
-    if (hfDamoRes.ok) {
-      const contentType = hfDamoRes.headers.get('content-type') || 'video/mp4';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      const arrayBuffer = await hfDamoRes.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
-    }
-  } catch (e) {
-    console.warn('[HuggingFace ModelScope] note:', e.message);
-  }
-
-  // Model 3: Pollinations AI Video Model (Text-To-Video Diffusion)
-  const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', motion video, 8k resolution, cinematic moving clip')}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
-  if (await streamVideo(videoUrl, 'Pollinations Video Model')) return;
-
-  // Model 4: Free Pixabay Film HD Video Search Engine
+  // Model 1: Pixabay Film HD Video (FASTEST — direct MP4, no AI wait time)
   try {
     const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
-    const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(keywords.slice(0, 35))}&per_page=10&video_type=film`);
+    const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(keywords.slice(0, 35))}&per_page=15&video_type=film`);
     if (pxaRes.ok) {
       const data = await pxaRes.json();
       if (data && data.hits && data.hits.length > 0) {
         const hit = data.hits[Number(seed) % data.hits.length];
-        const mp4Url = hit.videos?.medium?.url || hit.videos?.small?.url || hit.videos?.tiny?.url;
+        const mp4Url = hit.videos?.medium?.url || hit.videos?.large?.url || hit.videos?.small?.url;
         if (mp4Url && await streamVideo(mp4Url, 'Pixabay HD Video Engine')) return;
       }
     }
   } catch (e) {
-    console.warn('[Pixabay Video Engine] note:', e.message);
+    console.warn('[Pixabay Video] note:', e.message);
   }
 
-  // Model 5: High-Definition Dynamic Motion Video Stream
+  // Model 2: Pollinations AI Video (secondary — slower but AI-generated)
+  const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', motion video, cinematic clip')}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
+  if (await streamVideo(videoUrl, 'Pollinations Video Model')) return;
+
+  // Model 3: HuggingFace AnimateDiff Lightning (free public)
+  try {
+    const hfRes = await fetch(`https://router.huggingface.co/hf-inference/models/ByteDance/AnimateDiff-Lightning`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inputs: cleanPrompt })
+    });
+    if (hfRes.ok) {
+      const ct = hfRes.headers.get('content-type') || 'video/mp4';
+      res.setHeader('Content-Type', ct);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(Buffer.from(await hfRes.arrayBuffer()));
+    }
+  } catch (e) { console.warn('[HuggingFace AnimateDiff] note:', e.message); }
+
+  // Model 4: Static fallback clip
   const defaultVideoUrl = `https://pixabay.com/videos/download/video-31377_medium.mp4`;
-  if (await streamVideo(defaultVideoUrl, 'HD Motion Video Stream')) return;
+  if (await streamVideo(defaultVideoUrl, 'HD Fallback Stream')) return;
 
   return res.status(500).json({ error: 'Video generation failed' });
 });

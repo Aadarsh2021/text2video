@@ -552,67 +552,44 @@ async function handleServerRequest(request, response) {
         return false;
       }
 
-      // Model 1: HuggingFace Free Public Text-To-Video (AnimateDiff Lightning)
-      try {
-        const hfVidUrl = `https://router.huggingface.co/hf-inference/models/ByteDance/AnimateDiff-Lightning`;
-        const hfRes = await fetch(hfVidUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputs: cleanPrompt + ', 8k resolution, photorealistic cinematic video clip' })
-        });
-        if (hfRes.ok) {
-          const contentType = hfRes.headers.get('content-type') || 'video/mp4';
-          const buffer = await hfRes.arrayBuffer();
-          response.writeHead(200, { 'Content-Type': contentType, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
-          response.end(Buffer.from(buffer));
-          return;
-        }
-      } catch (e) {
-        console.warn('[HuggingFace AnimateDiff] note:', e.message);
-      }
-
-      // Model 2: HuggingFace ModelScope Text-To-Video Synthesis
-      try {
-        const hfDamoUrl = `https://router.huggingface.co/hf-inference/models/damo-vilab/text-to-video-ms-1.7b`;
-        const hfDamoRes = await fetch(hfDamoUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputs: cleanPrompt })
-        });
-        if (hfDamoRes.ok) {
-          const contentType = hfDamoRes.headers.get('content-type') || 'video/mp4';
-          const buffer = await hfDamoRes.arrayBuffer();
-          response.writeHead(200, { 'Content-Type': contentType, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
-          response.end(Buffer.from(buffer));
-          return;
-        }
-      } catch (e) {
-        console.warn('[HuggingFace ModelScope] note:', e.message);
-      }
-
-      // Model 3: Pollinations Video
-      const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', motion video, 8k resolution, cinematic moving clip')}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
-      if (await sendVideo(videoUrl, 'Pollinations Video Model')) return;
-
-      // Model 4: Free Pixabay Film HD Video Search Engine
+      // Model 1: Pixabay Film HD Video (FASTEST — direct MP4, no AI wait time)
       try {
         const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
-        const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(keywords.slice(0, 35))}&per_page=10&video_type=film`);
+        const pxaRes = await fetch(`https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(keywords.slice(0, 35))}&per_page=15&video_type=film`);
         if (pxaRes.ok) {
           const data = await pxaRes.json();
           if (data && data.hits && data.hits.length > 0) {
             const hit = data.hits[Number(seed) % data.hits.length];
-            const mp4Url = hit.videos?.medium?.url || hit.videos?.small?.url || hit.videos?.tiny?.url;
+            const mp4Url = hit.videos?.medium?.url || hit.videos?.large?.url || hit.videos?.small?.url;
             if (mp4Url && await sendVideo(mp4Url, 'Pixabay HD Video Engine')) return;
           }
         }
       } catch (e) {
-        console.warn('[Pixabay Video Failover] note:', e.message);
+        console.warn('[Pixabay Video] note:', e.message);
       }
 
-      // Model 5: High-Definition Dynamic Motion Video Stream
+      // Model 2: Pollinations AI Video (may take time — kept as secondary)
+      const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', motion video, cinematic clip')}?model=video&width=540&height=960&nologo=true&seed=${seed}`;
+      if (await sendVideo(videoUrl, 'Pollinations Video Model')) return;
+
+      // Model 3: HuggingFace AnimateDiff Lightning (free public)
+      try {
+        const hfRes = await fetch(`https://router.huggingface.co/hf-inference/models/ByteDance/AnimateDiff-Lightning`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputs: cleanPrompt })
+        });
+        if (hfRes.ok) {
+          const ct = hfRes.headers.get('content-type') || 'video/mp4';
+          const buf = await hfRes.arrayBuffer();
+          response.writeHead(200, { 'Content-Type': ct, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
+          response.end(Buffer.from(buf)); return;
+        }
+      } catch (e) { console.warn('[HuggingFace AnimateDiff] note:', e.message); }
+
+      // Model 4: Static fallback video clip
       const defaultVideoUrl = `https://pixabay.com/videos/download/video-31377_medium.mp4`;
-      if (await sendVideo(defaultVideoUrl, 'HD Motion Video Stream')) return;
+      if (await sendVideo(defaultVideoUrl, 'HD Fallback Stream')) return;
 
       response.writeHead(500); response.end('Video stream failed');
       return;
@@ -668,46 +645,65 @@ async function handleServerRequest(request, response) {
       const voiceKey = `${gender === 'Female' ? 'Female' : 'Male'}_${langParam === 'en' ? 'en' : 'hi'}`;
       const voiceName = VOICE_MAP[voiceKey] || 'hi-IN-MadhurNeural';
 
-      // Retry Edge TTS up to 3 times (stream can close early on first attempt)
-      let ttsSuccess = false;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `edge-tts-${attempt}-`));
-          const tts = new MsEdgeTTS();
-          await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_160KBITRATE_MONO_MP3);
-          const fileResult = await tts.toFile(tmpDir, cleanNarration);
-          const finalBuffer = await fs.readFile(fileResult.audioFilePath);
-          await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
+      // PRIMARY TTS: Google Translate TTS — HTTP-based, reliable, supports Hindi fully
+      const isHindiLang = langParam !== 'en';
+      const ttsLang = isHindiLang ? 'hi' : 'en';
 
-          if (finalBuffer && finalBuffer.length > 0) {
-            response.writeHead(200, {
-              'Content-Type': 'audio/mpeg',
-              'Content-Length': finalBuffer.length,
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=86400'
-            });
-            response.end(finalBuffer);
-            ttsSuccess = true;
-            break;
-          }
-        } catch (err) {
-          console.warn(`Edge Neural TTS attempt ${attempt} failed:`, err.message);
-          if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
-        }
+      // Split long text into chunks (Google TTS limit: 200 chars per request)
+      async function fetchGTTSChunk(chunk) {
+        const gUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${ttsLang}&q=${encodeURIComponent(chunk)}`;
+        const gRes = await fetch(gUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+        if (gRes.ok) return Buffer.from(await gRes.arrayBuffer());
+        return null;
       }
-      if (ttsSuccess) return;
 
-      // Fallback Google Translate TTS
       try {
-        const fallbackUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${isHindi ? 'hi' : 'en'}&q=${encodeURIComponent(cleanNarration.slice(0, 180))}`;
-        const fallbackRes = await fetch(fallbackUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (fallbackRes.ok) {
-          const buf = Buffer.from(await fallbackRes.arrayBuffer());
-          response.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': buf.length, 'Access-Control-Allow-Origin': '*' });
-          response.end(buf);
+        const words = cleanNarration.split(' ');
+        const chunks = [];
+        let current = '';
+        for (const w of words) {
+          if ((current + ' ' + w).trim().length > 180) {
+            if (current) chunks.push(current.trim());
+            current = w;
+          } else {
+            current = (current + ' ' + w).trim();
+          }
+        }
+        if (current) chunks.push(current.trim());
+
+        const buffers = await Promise.all(chunks.map(fetchGTTSChunk));
+        const validBuffers = buffers.filter(Boolean);
+        if (validBuffers.length > 0) {
+          const combined = Buffer.concat(validBuffers);
+          response.writeHead(200, {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': combined.length,
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=3600'
+          });
+          response.end(combined);
           return;
         }
-      } catch { }
+      } catch (gErr) {
+        console.warn('Google TTS error:', gErr.message);
+      }
+
+      // SECONDARY TTS: Edge Neural (msedge-tts) — 1 attempt only
+      try {
+        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'edge-tts-'));
+        const tts = new MsEdgeTTS();
+        await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_160KBITRATE_MONO_MP3);
+        const fileResult = await tts.toFile(tmpDir, cleanNarration);
+        const finalBuffer = await fs.readFile(fileResult.audioFilePath);
+        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+        if (finalBuffer && finalBuffer.length > 0) {
+          response.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Content-Length': finalBuffer.length, 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400' });
+          response.end(finalBuffer);
+          return;
+        }
+      } catch (edgeErr) {
+        console.warn('Edge TTS fallback failed:', edgeErr.message);
+      }
 
       response.writeHead(500);
       response.end('TTS error');
