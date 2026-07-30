@@ -506,80 +506,83 @@ async function handleServerRequest(request, response) {
         .replace(/[^a-zA-Z0-9\s]/g, '')
         .trim() || 'cinematic motion';
 
-      // Helper to fetch and stream media buffer
-      async function sendMediaBuffer(urlStr, providerName, forceType = 'image/jpeg', timeoutMs = 6000) {
-        try {
-          const controller = new AbortController();
-          const timer = setTimeout(() => controller.abort(), timeoutMs);
-          const vidRes = await fetch(urlStr, {
-            signal: controller.signal,
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            redirect: 'follow'
-          });
-          clearTimeout(timer);
+      // Helper to fetch and stream media buffer with 429 retry backoff
+      async function sendMediaBuffer(urlStr, providerName, forceType = 'image/jpeg', timeoutMs = 12000) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            const vidRes = await fetch(urlStr, {
+              signal: controller.signal,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                'Referer': 'https://pollinations.ai/'
+              },
+              redirect: 'follow'
+            });
+            clearTimeout(timer);
 
-          if (!vidRes.ok) return false;
-          const contentType = forceType || vidRes.headers.get('content-type') || 'image/jpeg';
-          if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
+            if (vidRes.status === 429 && attempt === 1) {
+              console.warn(`[AI Visual Scene] 429 Rate Limit on ${providerName}. Retrying after 1200ms...`);
+              await new Promise(r => setTimeout(r, 1200));
+              continue;
+            }
 
-          const arrayBuffer = await vidRes.arrayBuffer();
-          if (arrayBuffer.byteLength < 2000) return false;
+            if (!vidRes.ok) continue;
+            const contentType = forceType || vidRes.headers.get('content-type') || 'image/jpeg';
+            if (contentType.includes('text/html') || contentType.includes('application/json')) continue;
 
-          console.log(`[AI Visual Scene] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (${contentType})`);
-          response.writeHead(200, {
-            'Content-Type': contentType,
-            'Content-Length': arrayBuffer.byteLength,
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'public, max-age=86400'
-          });
-          response.end(Buffer.from(arrayBuffer));
-          return true;
-        } catch (e) { return false; }
+            const arrayBuffer = await vidRes.arrayBuffer();
+            if (arrayBuffer.byteLength < 2000) continue;
+
+            console.log(`[AI Visual Scene] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (${contentType})`);
+            response.writeHead(200, {
+              'Content-Type': contentType,
+              'Content-Length': arrayBuffer.byteLength,
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=86400'
+            });
+            response.end(Buffer.from(arrayBuffer));
+            return true;
+          } catch (e) {
+            if (attempt === 1) await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+        return false;
       }
 
       // Smart Character & Subject Prompt Enhancer for 100% Visual Relevance
-      const shortPrompt = cleanPrompt.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2).slice(0, 12).join(' ');
+      const shortPrompt = cleanPrompt.replace(/[^a-zA-Z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2).slice(0, 15).join(' ');
       let enhancedPrompt = shortPrompt;
 
       if (/naruto/i.test(cleanPrompt)) {
-        enhancedPrompt = 'Naruto Uzumaki 2D anime character, yellow spiky hair, headband, orange jumpsuit, Konoha village background, 8k vertical masterpiece';
+        enhancedPrompt = `Naruto Uzumaki 2D anime character, yellow spiky hair, headband, orange jumpsuit, Konoha village, ${shortPrompt}, 8k vertical masterpiece`;
       } else if (/sasuke/i.test(cleanPrompt)) {
-        enhancedPrompt = 'Sasuke Uchiha 2D anime character, dark hair, Sharingan, blue ninja outfit, 8k vertical masterpiece';
+        enhancedPrompt = `Sasuke Uchiha 2D anime character, dark hair, Sharingan, blue ninja outfit, ${shortPrompt}, 8k vertical masterpiece`;
       } else if (/sakura/i.test(cleanPrompt)) {
-        enhancedPrompt = 'Sakura Haruno 2D anime character, pink hair, red ninja outfit, 8k vertical masterpiece';
+        enhancedPrompt = `Sakura Haruno 2D anime character, pink hair, red ninja outfit, ${shortPrompt}, 8k vertical masterpiece`;
       } else if (/goku|dragonball/i.test(cleanPrompt)) {
-        enhancedPrompt = 'Son Goku Super Saiyan anime character, spiky golden hair, martial arts gi, 8k vertical masterpiece';
+        enhancedPrompt = `Son Goku Super Saiyan anime character, spiky golden hair, martial arts gi, ${shortPrompt}, 8k vertical masterpiece`;
       } else if (/hanuman|bhakti|god/i.test(cleanPrompt)) {
-        enhancedPrompt = 'Lord Hanuman Ji divine statue, golden glowing aura, mountain sunrise, 8k vertical masterpiece';
+        enhancedPrompt = `Lord Hanuman Ji divine statue, golden glowing aura, mountain sunrise, ${shortPrompt}, 8k vertical masterpiece`;
       } else if (/gym|workout|fitness|athlete/i.test(cleanPrompt)) {
-        enhancedPrompt = 'Muscular fitness athlete doing workout in modern gym, cinematic lighting, 8k vertical masterpiece';
+        enhancedPrompt = `Muscular fitness athlete doing dumbbell workout in modern gym, ${shortPrompt}, cinematic lighting, 8k vertical masterpiece`;
       } else if (/student|study|clock|calendar|motivation/i.test(cleanPrompt)) {
-        enhancedPrompt = 'Determined student sitting at desk studying, warm cinematic lighting, 8k vertical masterpiece';
+        enhancedPrompt = `Determined student sitting at desk studying with books and clock, ${shortPrompt}, warm cinematic lighting, 8k vertical masterpiece`;
       } else {
-        enhancedPrompt += ', 8k resolution, vertical cinematic clip masterpiece, photorealistic';
+        enhancedPrompt += ', 8k resolution, vertical cinematic scene masterpiece, photorealistic';
       }
 
-      // Tier 1: Pollinations AI Turbo Model (Fast 2s response)
+      // Tier 1: Pollinations AI Turbo Model
       const turboUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&model=turbo&seed=${seed}`;
-      if (await sendMediaBuffer(turboUrl, `AI Character Turbo ["${shortPrompt.slice(0, 25)}"]`, 'image/jpeg', 5000)) return;
+      if (await sendMediaBuffer(turboUrl, `AI Character Turbo ["${shortPrompt.slice(0, 25)}"]`, 'image/jpeg', 12000)) return;
 
       // Tier 2: Pollinations AI Standard Model
       const defaultUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=540&height=960&nologo=true&seed=${seed}`;
-      if (await sendMediaBuffer(defaultUrl, 'AI Character Standard', 'image/jpeg', 5000)) return;
+      if (await sendMediaBuffer(defaultUrl, 'AI Character Standard', 'image/jpeg', 12000)) return;
 
-      // Tier 3: Lexica AI Character Search Engine
-      try {
-        const lexicaRes = await fetch(`https://lexica.art/api/v1/search?q=${encodeURIComponent(shortPrompt)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (lexicaRes.ok) {
-          const data = await lexicaRes.json();
-          if (data?.images?.length > 0) {
-            const hit = data.images[Number(seed) % data.images.length];
-            if (hit?.src && await sendMediaBuffer(hit.src, 'Lexica Character AI', 'image/jpeg', 5000)) return;
-          }
-        }
-      } catch (e) {}
-
-      // Tier 4: Picsum Photographic Scene Generator (100% Guaranteed 200 OK Failover!)
+      // Tier 3: Picsum Photographic Scene Generator (100% Guaranteed 200 OK Failover!)
       const picsumUrl = `https://picsum.photos/seed/${seed}/540/960`;
       if (await sendMediaBuffer(picsumUrl, 'Picsum Scene Engine', 'image/jpeg', 6000)) return;
 

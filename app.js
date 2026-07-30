@@ -113,10 +113,9 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
     state.sceneAudios[i] = audio;
   });
 
-  for (let i = 0; i < scenes.length; i += 2) {
-    const batch = scenes.slice(i, i + 2);
-    await Promise.all(batch.map((sc, idx) => loadScene(sc, i + idx)));
-    if (i + 2 < scenes.length) await new Promise(r => setTimeout(r, 400));
+  for (let i = 0; i < scenes.length; i++) {
+    await loadScene(scenes[i], i);
+    if (i + 1 < scenes.length) await new Promise(r => setTimeout(r, 600));
   }
 
   renderCanvasFrame();
