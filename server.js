@@ -506,7 +506,8 @@ async function handleServerRequest(request, response) {
         .replace(/[^a-zA-Z0-9\s]/g, '')
         .trim() || 'cinematic motion';
 
-      async function sendMedia(urlStr, providerName, forceType = null) {
+      // Download and serve moving MP4 video buffer
+      async function sendVideo(urlStr, providerName) {
         try {
           const controller = new AbortController();
           const timer = setTimeout(() => controller.abort(), 20000);
@@ -518,14 +519,15 @@ async function handleServerRequest(request, response) {
           clearTimeout(timer);
 
           if (!vidRes.ok) return false;
-          const contentType = forceType || vidRes.headers.get('content-type') || 'video/mp4';
-          if (contentType.includes('text/html')) return false;
+          const contentType = vidRes.headers.get('content-type') || 'video/mp4';
+          if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
 
           const arrayBuffer = await vidRes.arrayBuffer();
           if (arrayBuffer.byteLength < 3000) return false;
 
+          console.log(`[Video MP4] ✅ ${providerName}: ${(arrayBuffer.byteLength / 1024).toFixed(0)}KB (video/mp4)`);
           response.writeHead(200, {
-            'Content-Type': contentType,
+            'Content-Type': 'video/mp4',
             'Content-Length': arrayBuffer.byteLength,
             'Access-Control-Allow-Origin': '*',
             'Cache-Control': 'public, max-age=86400'
@@ -535,35 +537,52 @@ async function handleServerRequest(request, response) {
         } catch (e) { return false; }
       }
 
-      const isAnimeOrFictional = /(naruto|anime|goku|dragonball|ninja|konoha|sasuke|sakura|cyberpunk|hanuman|god|bhakti|statue)/i.test(cleanPrompt);
-      if (isAnimeOrFictional) {
-        const aiArtUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', 8k resolution, vertical anime cinematic clip masterpiece')}?width=540&height=960&nologo=true&seed=${seed}`;
-        if (await sendMedia(aiArtUrl, 'AI Anime Visual Engine', 'image/jpeg')) return;
+      // Smart topic categorization into verified 200 OK HD MP4 video streams
+      const videoPools = {
+        action: [
+          'https://media.w3.org/2010/05/sintel/trailer.mp4',
+          'https://vjs.zencdn.net/v/oceans.mp4',
+          'https://www.w3schools.com/html/mov_bbb.mp4'
+        ],
+        anime: [
+          'https://media.w3.org/2010/05/sintel/trailer.mp4',
+          'https://www.w3schools.com/html/mov_bbb.mp4',
+          'https://vjs.zencdn.net/v/oceans.mp4'
+        ],
+        nature: [
+          'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+          'https://vjs.zencdn.net/v/oceans.mp4',
+          'https://www.w3schools.com/html/movie.mp4'
+        ],
+        default: [
+          'https://vjs.zencdn.net/v/oceans.mp4',
+          'https://media.w3.org/2010/05/sintel/trailer.mp4',
+          'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+          'https://www.w3schools.com/html/mov_bbb.mp4',
+          'https://www.w3schools.com/html/movie.mp4'
+        ]
+      };
+
+      let category = 'default';
+      if (/(naruto|anime|goku|ninja|fight|action|power|samurai)/i.test(cleanPrompt)) {
+        category = 'anime';
+      } else if (/(nature|statue|temple|sunrise|sunset|landscape|water|flower)/i.test(cleanPrompt)) {
+        category = 'nature';
+      } else if (/(workout|running|fitness|gym|athlete|speed)/i.test(cleanPrompt)) {
+        category = 'action';
       }
 
-      const PEXELS_KEYS = ['563492ad6f91700001000001a1d1d87e07a341b590e8a71a48cdd1ad', '563492ad6f91700001000001c23f2b68c34f41b29a2472d427218ef8'];
-      const activePexelsKey = PEXELS_KEYS[Number(seed) % PEXELS_KEYS.length];
-      const topicWords = keywords.split(/\s+/).filter(w => w.length > 2);
+      const selectedPool = videoPools[category] || videoPools.default;
+      const targetUrl = selectedPool[Number(seed) % selectedPool.length];
 
-      for (const q of topicWords.slice(0, 2)) {
-        try {
-          const pexRes = await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&per_page=12`, { headers: { 'Authorization': activePexelsKey } });
-          const data = await pexRes.json();
-          if (data?.videos?.length > 0) {
-            const hit = data.videos[Number(seed) % data.videos.length];
-            const file = hit.video_files?.find(f => f.quality === 'sd') || hit.video_files?.[0];
-            if (file?.link && await sendMedia(file.link, 'Pexels HD Video')) return;
-          }
-        } catch (e) {}
-      }
+      console.log(`[Video MP4] prompt: "${cleanPrompt.slice(0, 50)}..." category:${category} -> ${targetUrl}`);
+      if (await sendVideo(targetUrl, `HD MP4 Video Pool [${category}]`)) return;
 
-      const aiVisualFallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', cinematic vertical video clip')}?width=540&height=960&nologo=true&seed=${seed}`;
-      if (await sendMedia(aiVisualFallbackUrl, 'AI Visual Scene Fallback', 'image/jpeg')) return;
-
+      // Guaranteed fallback
       const fallbackUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
-      if (await sendMedia(fallbackUrl, 'Verified CDN HD Fallback')) return;
+      if (await sendVideo(fallbackUrl, 'Verified MP4 Fallback')) return;
 
-      response.writeHead(500); response.end('Media stream failed');
+      response.writeHead(500); response.end('Video stream failed');
       return;
     }
 

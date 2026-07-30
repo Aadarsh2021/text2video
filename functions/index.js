@@ -510,8 +510,8 @@ app.get(["/video", "/api/video"], async (req, res) => {
     .replace(/[^a-zA-Z0-9\s]/g, '')
     .trim() || 'cinematic motion';
 
-  // Helper to fetch and stream media buffer (video/mp4 or image/jpeg)
-  async function streamMedia(url, providerName, forceType = null) {
+  // Helper to fetch and stream moving MP4 video buffer
+  async function streamVideo(url, providerName) {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 20000);
@@ -523,77 +523,65 @@ app.get(["/video", "/api/video"], async (req, res) => {
       clearTimeout(timer);
 
       if (vidRes.ok) {
-        const contentType = forceType || vidRes.headers.get('content-type') || 'video/mp4';
+        const contentType = vidRes.headers.get('content-type') || 'video/mp4';
         if (contentType.includes('text/html') || contentType.includes('application/json')) return false;
 
         const arrayBuffer = await vidRes.arrayBuffer();
         if (arrayBuffer.byteLength < 3000) return false;
 
-        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Type', 'video/mp4');
         res.setHeader('Content-Length', arrayBuffer.byteLength);
         res.setHeader('Cache-Control', 'public, max-age=86400');
         res.send(Buffer.from(arrayBuffer));
         return true;
       }
     } catch (e) {
-      console.warn(`[Media Stream] ${providerName}:`, e.message);
+      console.warn(`[Video MP4 Stream] ${providerName}:`, e.message);
     }
     return false;
   }
 
-  // Model 1: For Anime / Fictional characters (Naruto, Goku, Hanuman, etc.) -> Generate 100% exact high-definition AI visual scene art
-  const isAnimeOrFictional = /(naruto|anime|goku|dragonball|ninja|konoha|sasuke|sakura|cyberpunk|hanuman|god|bhakti|statue)/i.test(cleanPrompt);
-  if (isAnimeOrFictional) {
-    const aiArtUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', 8k resolution, vertical anime cinematic clip masterpiece')}?width=540&height=960&nologo=true&seed=${seed}`;
-    if (await streamMedia(aiArtUrl, 'AI Anime Visual Engine', 'image/jpeg')) return;
+  const videoPools = {
+    action: [
+      'https://media.w3.org/2010/05/sintel/trailer.mp4',
+      'https://vjs.zencdn.net/v/oceans.mp4',
+      'https://www.w3schools.com/html/mov_bbb.mp4'
+    ],
+    anime: [
+      'https://media.w3.org/2010/05/sintel/trailer.mp4',
+      'https://www.w3schools.com/html/mov_bbb.mp4',
+      'https://vjs.zencdn.net/v/oceans.mp4'
+    ],
+    nature: [
+      'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+      'https://vjs.zencdn.net/v/oceans.mp4',
+      'https://www.w3schools.com/html/movie.mp4'
+    ],
+    default: [
+      'https://vjs.zencdn.net/v/oceans.mp4',
+      'https://media.w3.org/2010/05/sintel/trailer.mp4',
+      'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+      'https://www.w3schools.com/html/mov_bbb.mp4',
+      'https://www.w3schools.com/html/movie.mp4'
+    ]
+  };
+
+  let category = 'default';
+  if (/(naruto|anime|goku|ninja|fight|action|power|samurai)/i.test(cleanPrompt)) {
+    category = 'anime';
+  } else if (/(nature|statue|temple|sunrise|sunset|landscape|water|flower)/i.test(cleanPrompt)) {
+    category = 'nature';
+  } else if (/(workout|running|fitness|gym|athlete|speed)/i.test(cleanPrompt)) {
+    category = 'action';
   }
 
-  // Model 2: Pexels HD Stock Video Search (for real-world prompts)
-  const PEXELS_KEYS = [
-    '563492ad6f91700001000001a1d1d87e07a341b590e8a71a48cdd1ad',
-    '563492ad6f91700001000001c23f2b68c34f41b29a2472d427218ef8',
-    '563492ad6f917000010000018f6f59b6574f4b238f97a5b3a32f6b8a',
-    '563492ad6f917000010000017a59a7f34f0c436b99b514e8c148f4b0'
-  ];
-  const activePexelsKey = PEXELS_KEYS[Number(seed) % PEXELS_KEYS.length];
+  const selectedPool = videoPools[category] || videoPools.default;
+  const targetUrl = selectedPool[Number(seed) % selectedPool.length];
 
-  const genericStopwords = new Set(['vibrant', 'dynamic', 'cinematic', 'photorealistic', 'masterpiece', 'lighting', 'detailed', 'portrait', 'ultra', 'resolution', 'quality', 'style', 'scene', 'shots', 'background', 'foreground', 'with', 'from', 'that', 'this', 'have', 'more', 'some', 'were', 'each']);
-  const topicWords = keywords
-    .split(/\s+/)
-    .map(w => w.trim().toLowerCase())
-    .filter(w => w.length > 2 && !genericStopwords.has(w));
+  if (await streamVideo(targetUrl, `HD MP4 Pool [${category}]`)) return;
 
-  for (const q of topicWords.slice(0, 3)) {
-    try {
-      const pexRes = await fetch(
-        `https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&per_page=12`,
-        { headers: { 'Authorization': activePexelsKey, 'User-Agent': 'Mozilla/5.0' } }
-      );
-      if (pexRes.ok) {
-        const data = await pexRes.json();
-        if (data?.videos?.length > 0) {
-          const hit = data.videos[Number(seed) % data.videos.length];
-          const file = hit.video_files?.find(f => f.quality === 'sd' || f.quality === 'hd') || hit.video_files?.[0];
-          if (file?.link && await streamMedia(file.link, `Pexels["${q}"]`)) return;
-        }
-      }
-    } catch (e) { }
-  }
-
-  // Model 3: AI Visual Scene Fallback
-  const aiVisualFallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt + ', cinematic vertical video clip')}?width=540&height=960&nologo=true&seed=${seed}`;
-  if (await streamMedia(aiVisualFallbackUrl, 'AI Visual Scene Fallback', 'image/jpeg')) return;
-
-  // Model 4: Verified Fallback Video
-  const verifiedFallbackVideos = [
-    'https://vjs.zencdn.net/v/oceans.mp4',
-    'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-    'https://www.w3schools.com/html/mov_bbb.mp4',
-    'https://www.w3schools.com/html/movie.mp4',
-    'https://media.w3.org/2010/05/sintel/trailer.mp4'
-  ];
-  const fallbackUrl = verifiedFallbackVideos[Number(seed) % verifiedFallbackVideos.length];
-  if (await streamMedia(fallbackUrl, 'Verified Fallback')) return;
+  const fallbackUrl = 'https://vjs.zencdn.net/v/oceans.mp4';
+  if (await streamVideo(fallbackUrl, 'Verified MP4 Fallback')) return;
 
   return res.status(500).json({ error: 'Video generation failed' });
 });
