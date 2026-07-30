@@ -176,10 +176,11 @@ function renderCanvasFrame(ts = performance.now()) {
   const transitionProgress = isTransitioning ? (ts - state.transitionStartTime) / transitionDuration : 1.0;
   const easeProgress = isTransitioning ? Math.sin((transitionProgress * Math.PI) / 2) : 1.0;
 
-  // 1. Draw Exiting Scene Image
-  if (isTransitioning && state.sceneImages[state.prevScene]) {
-    const prevImg = state.sceneImages[state.prevScene];
-    if (prevImg && prevImg.complete && prevImg.naturalWidth !== 0) {
+  // 1. Draw Exiting Scene Media
+  if (isTransitioning && state.sceneVideos && state.sceneVideos[state.prevScene]) {
+    const prevMedia = state.sceneVideos[state.prevScene];
+    const isPrevReady = prevMedia && (prevMedia.videoWidth > 0 || prevMedia.naturalWidth > 0 || (prevMedia.complete && prevMedia.width > 0));
+    if (isPrevReady) {
       ctx.save();
       ctx.globalAlpha = 1.0 - easeProgress;
       const prevScale = 1.0 + (transitionProgress * 0.18);
@@ -188,7 +189,7 @@ function renderCanvasFrame(ts = performance.now()) {
       ctx.translate(w / 2 + prevSlideX, h / 2);
       ctx.scale(prevScale, prevScale);
       ctx.translate(-w / 2, -h / 2);
-      ctx.drawImage(prevImg, 0, 0, w, h);
+      drawImageCover(ctx, prevMedia, w, h);
       ctx.restore();
     }
   }
@@ -216,8 +217,9 @@ function renderCanvasFrame(ts = performance.now()) {
   }
 
   const bgVid = state.sceneVideos ? state.sceneVideos[state.currentScene] : null;
-  if (bgVid && bgVid.videoWidth > 0) {
-    if (bgVid.paused && state.playing) bgVid.play().catch(() => {});
+  const isMediaReady = bgVid && (bgVid.videoWidth > 0 || bgVid.naturalWidth > 0 || (bgVid.complete && bgVid.width > 0));
+  if (isMediaReady) {
+    if (bgVid.tagName === 'VIDEO' && bgVid.paused && state.playing) bgVid.play().catch(() => {});
     drawImageCover(ctx, bgVid, w, h);
   } else {
     // Animated cinematic gradient fallback — never black screen
