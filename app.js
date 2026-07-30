@@ -229,26 +229,44 @@ function renderCanvasFrame(ts = performance.now()) {
     ctx.translate(-w / 2, -h / 2);
   } else {
     const motionMode = state.cameraMotion || 'KenBurns';
+    const sceneIdx = state.currentScene || 0;
+    
+    // Dynamic 3D Cinematic Motion Physics per Scene (Transforms static image to live motion video)
     let zoom = 1.0;
     let panX = 0;
     let panY = 0;
+    let rotateAngle = 0;
 
-    if (motionMode === 'KenBurns') {
-      zoom = 1.0 + (sceneProgress * 0.14);
-      panX = Math.sin(sceneProgress * Math.PI) * 12;
-      panY = Math.cos(sceneProgress * Math.PI) * 8;
-    } else if (motionMode === 'PulseShake') {
-      const shake = state.playing ? Math.sin(ts * 0.05) * 4 : 0;
-      zoom = 1.05 + Math.abs(Math.sin(ts * 0.01)) * 0.06;
-      panX = shake;
-      panY = Math.cos(ts * 0.04) * 3;
-    } else if (motionMode === 'Parallax') {
-      zoom = 1.08;
-      panX = (Math.sin(ts * 0.001) * 20);
-      panY = (Math.cos(ts * 0.0012) * 15);
+    const phase = (sceneIdx % 4);
+    if (phase === 0) {
+      // Scene 1: Cinematic Push-In & Right Pan Glide
+      zoom = 1.0 + (sceneProgress * 0.28);
+      panX = -45 + (sceneProgress * 90);
+      panY = Math.sin(sceneProgress * Math.PI) * -18;
+      rotateAngle = -0.02 + (sceneProgress * 0.04);
+    } else if (phase === 1) {
+      // Scene 2: Epic Low-Angle Lift & Vertical Pan
+      zoom = 1.25 - (sceneProgress * 0.20);
+      panX = Math.cos(sceneProgress * Math.PI) * 35;
+      panY = 40 - (sceneProgress * 80);
+      rotateAngle = 0.02 - (sceneProgress * 0.04);
+    } else if (phase === 2) {
+      // Scene 3: Dynamic Pulse Shake & Orbital Shift
+      const pulse = state.playing ? Math.sin(ts * 0.003) * 6 : 0;
+      zoom = 1.10 + (Math.sin(sceneProgress * Math.PI * 1.5) * 0.18);
+      panX = Math.sin(sceneProgress * Math.PI * 2) * 42 + pulse;
+      panY = Math.cos(sceneProgress * Math.PI * 2) * 25;
+      rotateAngle = Math.sin(sceneProgress * Math.PI) * 0.025;
+    } else {
+      // Scene 4: IMAX Hyper Zoom Out & Sunset Glide
+      zoom = 1.32 - (sceneProgress * 0.26);
+      panX = 50 - (sceneProgress * 100);
+      panY = -30 + (sceneProgress * 60);
+      rotateAngle = -0.015 + (sceneProgress * 0.03);
     }
 
     ctx.translate(w / 2 + panX, h / 2 + panY);
+    ctx.rotate(rotateAngle);
     ctx.scale(zoom, zoom);
     ctx.translate(-w / 2, -h / 2);
   }
@@ -264,46 +282,47 @@ function renderCanvasFrame(ts = performance.now()) {
   }
   ctx.restore();
 
-  // 3. Midpoint Lens Flare Flash
-  if (isTransitioning) {
-    const flareIntensity = Math.sin(transitionProgress * Math.PI);
-    if (flareIntensity > 0.05) {
-      ctx.save();
-      const flareGrad = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, w * 0.85);
-      flareGrad.addColorStop(0, `rgba(255, 255, 255, ${flareIntensity * 0.55})`);
-      flareGrad.addColorStop(0.4, `rgba(168, 85, 247, ${flareIntensity * 0.35})`);
-      flareGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = flareGrad;
-      ctx.fillRect(0, 0, w, h);
-      ctx.restore();
-    }
-  }
+  // 3. LIVE CINEMATIC VIDEO LIGHTING & SUNBEAM SHADER (Gives real camera video movement)
+  ctx.save();
+  const rayAngle = (ts * 0.0005) % (Math.PI * 2);
+  const rayGrad = ctx.createLinearGradient(
+    w * 0.2 + Math.cos(rayAngle) * 100, 
+    0, 
+    w * 0.8 + Math.sin(rayAngle) * 100, 
+    h
+  );
+  rayGrad.addColorStop(0, 'rgba(255, 230, 180, 0.14)');
+  rayGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.02)');
+  rayGrad.addColorStop(1, 'rgba(0, 0, 0, 0.18)');
+  ctx.fillStyle = rayGrad;
+  ctx.fillRect(0, 0, w, h);
+  ctx.restore();
 
   // 4. PARTICLES SHADER OVERLAY (FireSparks, GoldDust, FilmGrain)
   ctx.save();
-  const shaderMode = state.particleShader || 'FireSparks';
+  const shaderMode = state.particleShader || 'GoldDust';
 
   if (shaderMode === 'FireSparks') {
-    ctx.fillStyle = 'rgba(249, 115, 22, 0.4)';
-    for (let i = 0; i < 20; i++) {
-      const px = (Math.sin(ts * 0.002 + i * 2.1) * 0.5 + 0.5) * w;
-      const py = h - ((ts * 0.12 + i * 45) % h);
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.45)';
+    for (let i = 0; i < 35; i++) {
+      const px = (Math.sin(ts * 0.0018 + i * 2.1) * 0.5 + 0.5) * w;
+      const py = h - ((ts * 0.18 + i * 45) % h);
       ctx.beginPath();
-      ctx.arc(px, py, (i % 3) + 1.5, 0, Math.PI * 2);
+      ctx.arc(px, py, (i % 4) + 1.8, 0, Math.PI * 2);
       ctx.fill();
     }
   } else if (shaderMode === 'GoldDust') {
-    ctx.fillStyle = 'rgba(234, 179, 8, 0.35)';
-    for (let i = 0; i < 25; i++) {
-      const px = (Math.sin(ts * 0.001 + i * 1.8) * 0.5 + 0.5) * w;
-      const py = ((ts * 0.04 + i * 38) % h);
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.42)';
+    for (let i = 0; i < 40; i++) {
+      const px = (Math.sin(ts * 0.0012 + i * 1.8) * 0.5 + 0.5) * w;
+      const py = ((ts * 0.06 + i * 38) % h);
       ctx.beginPath();
-      ctx.arc(px, py, (i % 4) + 1.2, 0, Math.PI * 2);
+      ctx.arc(px, py, (i % 5) + 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
   } else if (shaderMode === 'FilmGrain') {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-    for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+    for (let i = 0; i < 80; i++) {
       const rx = Math.random() * w;
       const ry = Math.random() * h;
       ctx.fillRect(rx, ry, 2, 2);
