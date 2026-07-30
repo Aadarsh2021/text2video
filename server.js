@@ -292,12 +292,12 @@ function simulateBuiltinModel(promptText = '', systemPrompt = '', language = 'Hi
     'आज का स्ट्रगल ही कल की तुम्हारी सबसे बड़ी सफलता का कारण बनेगा'
   ];
 
-  if (/(naruto|anime|goku|dragonball|aot|dbz|ninja)/i.test(p)) {
+  if (/(naruto|ninja|anime|hokage|sasuke)/i.test(p)) {
     subjectChar = 'Naruto Uzumaki';
-    title = 'Naruto: From Outcast to Legend';
-    hook = 'Jab poori duniya ne use monster bolke akele chhod diya... tab 9-year-old Naruto ne ek impossible dream dekha!';
-    caption = '🔥 Naruto Uzumaki Conviction! #Naruto #Anime #HinglishReels #Motivation #Viral';
-    hashtags = ['#Naruto', '#Anime', '#reels', '#viral', '#Shorts'];
+    title = 'Naruto: Unbreakable Ninja Way';
+    hook = 'जब पूरी दुनिया ने उसे अकेला छोड़ दिया, तब उसने होकागे बनने का इतिहास रचा!';
+    caption = '🍥 Dattebayo! Never give up! #Naruto #Hokage #Anime #Reels';
+    hashtags = ['#Naruto', '#Anime', '#Reels', '#Shorts'];
     visuals = [
       'Naruto Uzumaki sitting heroically wearing headband looking ahead close up anime portrait',
       'Naruto Uzumaki in action training with Shadow Clones dynamic anime lighting',
@@ -305,22 +305,22 @@ function simulateBuiltinModel(promptText = '', systemPrompt = '', language = 'Hi
       'Naruto Uzumaki Seventh Hokage flowing cape smiling at sunrise victorious anime portrait'
     ];
     narrations = [
-      'Jab poori duniya ne use monster bolke akele chhod diya, tab usne Hokage banne ka dream dekha',
-      'Zero talent, zero recognition. Par har baar jab log use giraate the, wo wapas uthta tha',
-      'Pain se leke Madara tak, usne apni unwavering conviction se poori duniya ko badal diya',
-      'Aaj wo har us insaan ki aawaz hai jo kabhi give up nahi karta. Believe it!'
+      'Jab poori duniya ne use monster bolke chhod diya, tab usne Hokage banne ki kasm khayi!',
+      'Zero talent, zero recognition! Par har baar jab log use giraate the, wo wapas uthta tha!',
+      'Pain se leke Madara tak, usne apni unbreakable spirit se poori duniya ko badal diya!',
+      'Yeh hai Naruto Uzumaki ka Ninja Way! Never give up! Believe it!'
     ];
     spokenNarrations = [
-      'जब पूरी दुनिया ने उसे मॉन्स्टर बोलके अकेले छोड़ दिया, तब उसने होकागे बनने का ड्रीम देखा',
-      'ज़ीरो टैलेंट, ज़ीरो रिकग्निशन. पर हर बार जब लोग उसे गिराते थे, वो वापस उठता था',
-      'पेन से लेके मडारा तक, उसने अपनी अनवेवरिंग कन्विक्शन से पूरी दुनिया को बदल दिया',
-      'आज वो हर उस इंसान की आवाज़ है जो कभी गिव अप नहीं करता. बिलीव इट!'
+      'जब पूरी दुनिया ने उसे मॉन्स्टर बोलके छोड़ दिया, तब उसने होकागे बनने की कसम खाई!',
+      'ज़ीरो टैलेंट, ज़ीरो रिकग्निशन! पर हर बार जब लोग लोग उसे गिराते थे, वो दोगुनी ताकत से वापस उठता था!',
+      'पेन से लेके मडारा तक, उसने अपनी अचल शक्ति से पूरी निंजा दुनिया को बदल दिया!',
+      'यह है नारुतो उज़ुमाकी का निंजा वे! नेवर गिव अप! बिलीव इट!'
     ];
   } else if (/(hanuman|bhakti|god|ram|peace|spiritual|divine)/i.test(p)) {
     subjectChar = 'Lord Hanuman';
     title = 'Hanuman Ji: Power of Pure Devotion';
-    hook = 'Jai Shree Ram! Shri Hanuman Ji ki bhakti aur shanti ki amrit katha!';
-    caption = '🙏 Bajrangbali Bhakti & Divine Peace! #HanumanJi #Bhakti #ShreeRam #Spiritual #Viral';
+    hook = 'जय श्री राम! जब-जब धर्म पर संकट आया, बजरंगबली ने हर बाधा को भस्म कर दिया!';
+    caption = '🙏 Bajrangbali Bhakti & Divine Power! #HanumanJi #Bhakti #ShreeRam #Spiritual #Reels';
     hashtags = ['#HanumanJi', '#Bhakti', '#ShreeRam', '#reels', '#viral'];
     visuals = [
       'Lord Hanuman divine warrior anime portrait, glowing golden aura, powerful stance',
@@ -329,21 +329,21 @@ function simulateBuiltinModel(promptText = '', systemPrompt = '', language = 'Hi
       'Lord Hanuman folded hands bowing to Lord Ram divine golden blessing portrait'
     ];
     narrations = [
-      'Hanuman Ji ki bhakti aur shanti ki kahani humein sachaayee aur saahas sikhati hai',
-      'Shri Ram kee bhakti mein leen Hanuman Ji ne har mushkil ko aasaan bana diya',
-      'Unki bhakti ki shakti se har darr aur sankat door ho jata hai',
-      'Jai Bajrangbali! Unki kripa se humein jeevan mein shanti aur vijay milti hai'
+      'Jab-jab dharm par sankat aaya, tab-tab Bajrangbali ne har baadha ko pal bhar mein bhasm kar diya!',
+      'Sanjeevani parvat haath mein uthaye, Lanka mein Ram naam ka parchham lehraaya!',
+      'Unki bhakti ki shakti se har darr, rog aur sankat door ho jaata hai!',
+      'Jai Hanuman Gyan Gun Sagar! Bolo Jai Shree Ram!'
     ];
     spokenNarrations = [
-      'हनुमान जी की भक्ति और शांति की कहानी हमें सच्चाई और साहस सिखाती है',
-      'श्री राम की भक्ति में लीन हनुमान जी ने हर मुश्किल को आसान बना दिया',
-      'उनकी भक्ति की शक्ति से हर डर और संकट दूर हो जाता है',
-      'जय बजरंगबली! उनकी कृपा से हमें जीवन में शांति और विजय मिलती है'
+      'जब-जब धर्म पर संकट आया, तब-तब बजरंगबली ने हर बाधा को पल भर में भस्म कर दिया!',
+      'संजीवनी पर्वत हाथ में उठाए, लंका में राम नाम का परचम लहराया!',
+      'उनकी भक्ति की शक्ति से हर डर, रोग और संकट दूर हो जाता है!',
+      'जय हनुमान ज्ञान गुण सागर! बोलो जय श्री राम!'
     ];
   } else if (/(gym|workout|fitness|fat loss|muscle|weight loss)/i.test(p)) {
     subjectChar = 'Muscular Athlete';
     title = 'Gym Truth: Fat Loss vs Muscle Building';
-    hook = 'Gym jaane se pehle yeh 1 mistake mat karna — fat loss aur weight loss ka sach!';
+    hook = 'जिम जाने से पहले यह सबसे बड़ी गलती मत करना — फैट लॉस और वेट लॉस का सच!';
     caption = '💪 Muscle Building & Fat Loss Secrets! #GymMotivation #Fitness #Workout #Reels';
     hashtags = ['#gym', '#fitness', '#workout', '#fatloss', '#reels'];
     visuals = [
