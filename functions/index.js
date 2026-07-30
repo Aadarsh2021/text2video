@@ -536,51 +536,55 @@ app.get(["/video", "/api/video"], async (req, res) => {
         return true;
       }
     } catch (e) {
-      console.warn(`[Video Stream Failover] ${providerName} note:`, e.message);
+      console.warn(`[Video Stream] ${providerName}:`, e.message);
     }
     return false;
   }
+
+  const PEXELS_KEYS = [
+    '563492ad6f91700001000001a1d1d87e07a341b590e8a71a48cdd1ad',
+    '563492ad6f91700001000001c23f2b68c34f41b29a2472d427218ef8',
+    '563492ad6f917000010000018f6f59b6574f4b238f97a5b3a32f6b8a',
+    '563492ad6f917000010000017a59a7f34f0c436b99b514e8c148f4b0'
+  ];
+  const activePexelsKey = PEXELS_KEYS[Number(seed) % PEXELS_KEYS.length];
 
   const words = keywords
     .split(/\s+/)
     .map(w => w.trim().toLowerCase())
     .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'have', 'more', 'some', 'were', 'shot', 'shots', 'background', 'foreground'].includes(w));
 
-  const queryCandidates = [];
-  if (words.length >= 2) queryCandidates.push(words.slice(0, 2).join(' '));
-  if (words.length >= 1) queryCandidates.push(words[0]);
-  if (words.length >= 2) queryCandidates.push(words[1]);
-  queryCandidates.push('nature', 'cinematic');
+  const searchTerms = [];
+  if (words.length >= 1) searchTerms.push(words[0]);
+  if (words.length >= 2) searchTerms.push(words[1]);
+  searchTerms.push('cinematic', 'nature', 'city');
 
-  // Model 1: Pixabay Film HD Video
-  const pixabayKey = '38924294-8bfd46927d6b38c26f030a6c6';
-  for (const q of queryCandidates) {
+  for (const q of searchTerms) {
     try {
-      const pxaRes = await fetch(
-        `https://pixabay.com/api/videos/?key=${pixabayKey}&q=${encodeURIComponent(q)}&per_page=15&video_type=film&safesearch=true`,
-        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      const pexRes = await fetch(
+        `https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&per_page=12`,
+        { headers: { 'Authorization': activePexelsKey, 'User-Agent': 'Mozilla/5.0' } }
       );
-      if (pxaRes.ok) {
-        const data = await pxaRes.json();
-        if (data?.hits?.length > 0) {
-          const hit = data.hits[Number(seed) % data.hits.length];
-          const mp4Url = hit.videos?.medium?.url || hit.videos?.small?.url || hit.videos?.tiny?.url;
-          if (mp4Url && await streamVideo(mp4Url, `Pixabay[${q}]`)) return;
+      if (pexRes.ok) {
+        const data = await pexRes.json();
+        if (data?.videos?.length > 0) {
+          const hit = data.videos[Number(seed) % data.videos.length];
+          const file = hit.video_files?.find(f => f.quality === 'sd' || f.quality === 'hd') || hit.video_files?.[0];
+          if (file?.link && await streamVideo(file.link, `Pexels["${q}"]`)) return;
         }
       }
     } catch (e) { }
   }
 
-  // Model 2: Guaranteed GCS public sample MP4s
-  const gcsVideos = [
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4'
+  const verifiedFallbackVideos = [
+    'https://vjs.zencdn.net/v/oceans.mp4',
+    'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+    'https://www.w3schools.com/html/mov_bbb.mp4',
+    'https://www.w3schools.com/html/movie.mp4',
+    'https://media.w3.org/2010/05/sintel/trailer.mp4'
   ];
-  const selectedGcs = gcsVideos[Number(seed) % gcsVideos.length];
-  if (await streamVideo(selectedGcs, 'GCS Fallback')) return;
+  const fallbackUrl = verifiedFallbackVideos[Number(seed) % verifiedFallbackVideos.length];
+  if (await streamVideo(fallbackUrl, 'Verified Fallback')) return;
 
   return res.status(500).json({ error: 'Video generation failed' });
 });
