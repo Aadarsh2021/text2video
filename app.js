@@ -64,37 +64,35 @@ async function preloadAllSceneVisuals(scenes, onProgress) {
       resolve();
     };
 
-    const safetyTimer = setTimeout(() => {
-      const fallbackVid = document.createElement('video');
-      safeDone(fallbackVid);
-    }, 25000);
+    // Safety timer: 30s max, then fallback to animated gradient (never black screen)
+    const safetyTimer = setTimeout(() => safeDone(null), 30000);
 
     const sceneVisualPrompt = (sc.visual || '').trim()
       || `${state.reel?.subjectCharacter || 'character'} scene ${i + 1} motion video`;
     const uniqueSeed = (i + 1) * 487 + Math.floor(Math.random() * 999);
 
-    // 100% Real AI & HD MP4 Video Preloader
-    const vid = document.createElement('video');
-    vid.crossOrigin = 'anonymous';
-    vid.muted = true;
-    vid.loop = true;
-    vid.playsInline = true;
-
-    vid.oncanplaythrough = () => {
-      vid.play().catch(() => {});
-      safeDone(vid);
-    };
-    vid.onloadeddata = () => {
-      vid.play().catch(() => {});
-      safeDone(vid);
-    };
-    vid.onerror = () => {
-      const directVidUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(sceneVisualPrompt + ', motion video, 8k resolution, cinematic moving clip')}?model=video&width=540&height=960&nologo=true&seed=${uniqueSeed}`;
-      vid.src = directVidUrl;
-      safeDone(vid);
-    };
-
-    vid.src = `/api/video?prompt=${encodeURIComponent(sceneVisualPrompt)}&seed=${uniqueSeed}`;
+    // Fetch video through local server proxy as Blob then createObjectURL
+    // This eliminates ALL CORS/403 issues - no direct calls to external video APIs
+    fetch(`/api/video?prompt=${encodeURIComponent(sceneVisualPrompt)}&seed=${uniqueSeed}`)
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.blob();
+      })
+      .then(blob => {
+        if (blob.size < 2000) throw new Error('Empty blob');
+        const blobUrl = URL.createObjectURL(blob);
+        const vid = document.createElement('video');
+        vid.muted = true;
+        vid.loop = true;
+        vid.playsInline = true;
+        vid.preload = 'auto';
+        vid.oncanplay = () => { vid.play().catch(() => {}); safeDone(vid); };
+        vid.onloadeddata = () => { vid.play().catch(() => {}); safeDone(vid); };
+        vid.onerror = () => safeDone(null);
+        vid.src = blobUrl;
+        vid.load();
+      })
+      .catch(() => safeDone(null)); // null = animated gradient fallback, never black screen
 
     // Parallel Audio Preload
     const rawText = sc.spokenNarration || sc.narration || sc.onScreen || '';
@@ -207,19 +205,31 @@ function renderCanvasFrame(ts = performance.now()) {
   }
 
   const bgVid = state.sceneVideos ? state.sceneVideos[state.currentScene] : null;
-  if (bgVid && bgVid.videoWidth !== 0) {
-    if (bgVid.paused && state.playing) bgVid.play().catch(() => {});
-    drawImageCover(ctx, bgVid, w, h);
-  } else if (bgVid) {
+  if (bgVid && bgVid.videoWidth > 0) {
     if (bgVid.paused && state.playing) bgVid.play().catch(() => {});
     drawImageCover(ctx, bgVid, w, h);
   } else {
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, scene.color || '#4c1d95');
-    grad.addColorStop(1, '#06050b');
+    // Animated cinematic gradient fallback — never black screen
+    const t = ts * 0.001;
+    const sceneColors = [
+      ['#1e1b4b', '#4c1d95', '#7c3aed'],
+      ['#0f172a', '#1e3a5f', '#0ea5e9'],
+      ['#1a0a00', '#7c2d12', '#f97316'],
+      ['#042f2e', '#065f46', '#10b981'],
+    ];
+    const ci = (state.currentScene || 0) % sceneColors.length;
+    const [c1, c2, c3] = sceneColors[ci];
+    const grad = ctx.createRadialGradient(
+      w * (0.5 + 0.15 * Math.sin(t * 0.7)), h * (0.3 + 0.1 * Math.cos(t * 0.5)), 0,
+      w / 2, h / 2, h * 0.9
+    );
+    grad.addColorStop(0, c3);
+    grad.addColorStop(0.45, c2);
+    grad.addColorStop(1, c1);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
   }
+
   ctx.restore();
 
   // 3. LIVE CINEMATIC VIDEO LIGHTING & SUNBEAM SHADER (Gives real camera video movement)
